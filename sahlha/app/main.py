@@ -4,8 +4,13 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from sahlha.app.api import routes_agent, routes_assessment, routes_audio, routes_documents, routes_images, routes_teacher
+from sahlha.app.api import (routes_agent, routes_assessment, routes_audio, routes_auth,
+                            routes_classrooms, routes_documents, routes_images,
+                            routes_materials, routes_parent, routes_student, routes_teacher,
+                            routes_teacher_platform)
+from sahlha.app.config import settings
 from sahlha.app.database.database import init_db
 
 
@@ -15,7 +20,31 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Sahlha AI Learning Agent (MVP)", lifespan=lifespan)
+app = FastAPI(title="Sahlha AI Learning Platform", lifespan=lifespan)
+
+# Mobile development: emulator / physical device / Flutter web. Credentials are
+# bearer tokens (Flutter secure storage), not cookies — origins stay explicit.
+_origins = ["http://localhost:3000", "http://127.0.0.1:3000",
+            "http://localhost:8080", "http://127.0.0.1:8080",
+            "http://localhost:5000", "http://127.0.0.1:5000"]
+if settings.cors_extra_origins.strip():
+    _origins += [o.strip() for o in settings.cors_extra_origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Platform APIs (authenticated, RBAC-enforced).
+app.include_router(routes_auth.router)
+app.include_router(routes_classrooms.router)
+app.include_router(routes_materials.router)
+app.include_router(routes_student.router)
+app.include_router(routes_teacher_platform.router)
+app.include_router(routes_parent.router)
+# Legacy AI-loop APIs (kept working; Streamlit dev tool + existing tests use them).
 app.include_router(routes_documents.router)
 app.include_router(routes_agent.router)
 app.include_router(routes_teacher.router)
@@ -26,7 +55,7 @@ app.include_router(routes_images.router)
 
 @app.get("/")
 def root():
-    return {"service": "sahlha-mvp", "status": "ok"}
+    return {"service": "sahlha", "status": "ok"}
 
 
 @app.get("/health")

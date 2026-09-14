@@ -5,10 +5,29 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = "Sahlha AI Learning Agent (MVP)"
+    app_name: str = "Sahlha AI Learning Platform"
     database_url: str = "sqlite:///./data/sahlha.db"
     upload_dir: str = "./data/uploads"
     vectorizer_path: str = "./data/tfidf_vectorizer.pkl"
+
+    # ---- Auth (JWT) ----
+    # Prototype default; override via SAHLHA_JWT_SECRET in real deployments.
+    jwt_secret: str = "sahlha-dev-secret-change-me-in-production-32"
+    jwt_algorithm: str = "HS256"
+    jwt_expires_minutes: int = 60 * 24 * 7  # 7 days (mobile prototype convenience)
+
+    # ---- Mastery thresholds (student-facing states) ----
+    mastery_developing_min: float = 0.6  # accuracy >= this => developing
+    mastery_mastered_min: float = 0.8  # accuracy >= this (+ min attempts) => mastered
+    mastery_min_attempts: int = 4  # attempts required before "mastered" is awarded
+
+    # ---- Uploads ----
+    max_upload_mb: int = 25
+    allowed_extensions: str = ".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.tiff,.bmp"
+
+    # ---- CORS (mobile development) ----
+    # Comma-separated origins allowed in addition to the mobile defaults.
+    cors_extra_origins: str = ""
 
     # LLM provider: Groq (OpenAI-compatible API). Empty key => grounded fallback generator.
     groq_api_key: str = ""

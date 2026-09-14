@@ -70,6 +70,8 @@ def extract_document_text(file_bytes: bytes, filename: str) -> ExtractedDocument
         return ExtractedDocument(text=text.strip(), num_pages=pages, is_scanned=True, method=method)
     if suffix == ".docx":
         return ExtractedDocument(text=_extract_docx(file_bytes).strip(), num_pages=1, is_scanned=False, method="docx")
+    if suffix == ".pptx":
+        return ExtractedDocument(text=_extract_pptx(file_bytes).strip(), num_pages=1, is_scanned=False, method="pptx")
     if suffix in {".txt", ".md", ""}:
         return ExtractedDocument(text=file_bytes.decode("utf-8", errors="ignore").strip(),
                                  num_pages=1, is_scanned=False, method="txt")

@@ -27,12 +27,20 @@ def init_db() -> None:
 
 
 def _ensure_columns() -> None:
-    """Lightweight additive migration for SQLite (create_all won't ALTER existing tables)."""
+    """Lightweight additive migration for SQLite (create_all won't ALTER existing tables).
+
+    Additive only: new tables are created by create_all; here we add columns to
+    tables that already exist from an older version. Never drops or renames.
+    """
     from sqlalchemy import inspect, text
 
     wanted: dict[str, list[tuple[str, str]]] = {
         "skills": [("image_url", "VARCHAR(1024)"), ("image_path", "VARCHAR(1024)"),
                    ("image_alt", "VARCHAR(512)")],
+        "question_banks": [("teacher_id", "VARCHAR(32)"), ("classroom_id", "VARCHAR(32)"),
+                           ("material_id", "VARCHAR(32)")],
+        "student_skill_performance": [("course_id", "VARCHAR(128)"), ("lesson_id", "VARCHAR(128)"),
+                                      ("skill_row_id", "VARCHAR(32)")],
     }
     with engine.connect() as conn:
         for table, cols in wanted.items():
