@@ -141,10 +141,13 @@ def next_bank_version(db: Session, *, course_id: str, lesson_id: str, skill_id: 
 
 
 def create_bank(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
-                questions: list[dict], teacher_feedback: str = "") -> m.QuestionBank:
+                questions: list[dict], teacher_feedback: str = "",
+                teacher_id: str | None = None, classroom_id: str | None = None,
+                material_id: str | None = None) -> m.QuestionBank:
     version = next_bank_version(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     bank = m.QuestionBank(course_id=course_id, lesson_id=lesson_id, skill_id=skill_id,
-                          version=version, status="pending_review", teacher_feedback=teacher_feedback)
+                          version=version, status="pending_review", teacher_feedback=teacher_feedback,
+                          teacher_id=teacher_id, classroom_id=classroom_id, material_id=material_id)
     db.add(bank)
     db.flush()
     for qd in questions:
@@ -158,11 +161,38 @@ def get_bank(db: Session, bank_id: str) -> m.QuestionBank | None:
     return db.get(m.QuestionBank, bank_id)
 
 
-def list_banks(db: Session, *, status: str | None = None) -> list[m.QuestionBank]:
+def list_banks(db: Session, *, status: str | None = None,
+               teacher_id: str | None = None, classroom_id: str | None = None,
+               material_id: str | None = None, skill_id: str | None = None,
+               lesson_id: str | None = None) -> list[m.QuestionBank]:
     q = select(m.QuestionBank).order_by(desc(m.QuestionBank.created_at))
     if status:
         q = q.where(m.QuestionBank.status == status)
+    if teacher_id:
+        q = q.where(m.QuestionBank.teacher_id == teacher_id)
+    if classroom_id:
+        q = q.where(m.QuestionBank.classroom_id == classroom_id)
+    if material_id:
+        q = q.where(m.QuestionBank.material_id == material_id)
+    if skill_id:
+        q = q.where(m.QuestionBank.skill_id == skill_id)
+    if lesson_id:
+        q = q.where(m.QuestionBank.lesson_id == lesson_id)
     return list(db.execute(q).scalars().all())
+
+
+def update_question(db: Session, question: m.Question, **fields) -> m.Question:
+    for key, value in fields.items():
+        if hasattr(question, key):
+            setattr(question, key, value)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+def delete_question(db: Session, question: m.Question) -> None:
+    db.delete(question)
+    db.commit()
 
 
 def set_bank_status(db: Session, bank: m.QuestionBank, status: str, feedback: str = "") -> None:
@@ -239,31 +269,86 @@ def get_attempts(db: Session, student_id: str, limit: int = 200) -> list[m.Stude
     return list(db.execute(q).scalars().all())
 
 
+def get_attempt_for(db: Session, assessment_id: str, question_id: str) -> m.StudentAttempt | None:
+    q = select(m.StudentAttempt).where(
+        m.StudentAttempt.assessment_id == assessment_id,
+        m.StudentAttempt.question_id == question_id)
+    return db.execute(q).scalars().first()
+
+
 def get_failed_question_ids(db: Session, student_id: str) -> list[str]:
     q = select(m.StudentAttempt).where(m.StudentAttempt.student_id == student_id,
                                        m.StudentAttempt.correct.is_(False))
     return [a.question_id for a in db.execute(q).scalars().all()]
 
 
-def upsert_skill_performance(db: Session, *, student_id: str, skill_id: str, correct: bool) -> m.StudentSkillPerformance:
-    q = select(m.StudentSkillPerformance).where(
-        m.StudentSkillPerformance.student_id == student_id,
-        m.StudentSkillPerformance.skill_id == skill_id)
-    perf = db.execute(q).scalars().first()
+def upsert_skill_performance(db: Session, *, student_id: str, skill_id: str, correct: bool,
+                             course_id: str = "", lesson_id: str = "",
+                             skill_row_id: str | None = None) -> m.StudentSkillPerformance:
+    # Prefer the scoped row (student+course+lesson+skill); fall back to the legacy
+    # unscoped row for backwards compatibility with pre-platform data.
+    perf = None
+    if course_id or lesson_id:
+        q = select(m.StudentSkillPerformance).where(
+            m.StudentSkillPerformance.student_id == student_id,
+            m.StudentSkillPerformance.course_id == course_id,
+            m.StudentSkillPerformance.lesson_id == lesson_id,
+            m.StudentSkillPerformance.skill_id == skill_id)
+        perf = db.execute(q).scalars().first()
     if perf is None:
-        perf = m.StudentSkillPerformance(student_id=student_id, skill_id=skill_id)
+        # Legacy fallback matches ONLY unscoped rows; a row scoped to a different
+        # lesson must never absorb another lesson's attempts.
+        q = select(m.StudentSkillPerformance).where(
+            m.StudentSkillPerformance.student_id == student_id,
+            m.StudentSkillPerformance.skill_id == skill_id,
+            m.StudentSkillPerformance.course_id == "",
+            m.StudentSkillPerformance.lesson_id == "")
+        perf = db.execute(q).scalars().first()
+    if perf is None:
+        perf = m.StudentSkillPerformance(student_id=student_id, skill_id=skill_id,
+                                         course_id=course_id or "", lesson_id=lesson_id or "",
+                                         skill_row_id=skill_row_id)
         db.add(perf)
         db.flush()
+    else:
+        # Heal legacy rows: adopt scope once known (prevents cross-lesson collisions).
+        if course_id and not perf.course_id:
+            perf.course_id = course_id
+        if lesson_id and not perf.lesson_id:
+            perf.lesson_id = lesson_id
+        if skill_row_id and not perf.skill_row_id:
+            perf.skill_row_id = skill_row_id
     perf.total_attempts += 1
     if correct:
         perf.correct_attempts += 1
     perf.accuracy = perf.correct_attempts / perf.total_attempts if perf.total_attempts else 0.0
     perf.last_updated = datetime.datetime.utcnow()
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # Pre-platform DBs may still enforce the legacy unscoped uniqueness:
+        # merge into the existing row instead of failing.
+        db.rollback()
+        q = select(m.StudentSkillPerformance).where(
+            m.StudentSkillPerformance.student_id == student_id,
+            m.StudentSkillPerformance.skill_id == skill_id)
+        perf = db.execute(q).scalars().first()
+        perf.total_attempts += 1
+        if correct:
+            perf.correct_attempts += 1
+        perf.accuracy = perf.correct_attempts / perf.total_attempts if perf.total_attempts else 0.0
+        perf.last_updated = datetime.datetime.utcnow()
+        db.commit()
     db.refresh(perf)
     return perf
 
 
-def get_skill_performance(db: Session, student_id: str) -> list[m.StudentSkillPerformance]:
+def get_skill_performance(db: Session, student_id: str, *,
+                           course_id: str | None = None,
+                           lesson_id: str | None = None) -> list[m.StudentSkillPerformance]:
     q = select(m.StudentSkillPerformance).where(m.StudentSkillPerformance.student_id == student_id)
+    if course_id:
+        q = q.where(m.StudentSkillPerformance.course_id == course_id)
+    if lesson_id:
+        q = q.where(m.StudentSkillPerformance.lesson_id == lesson_id)
     return list(db.execute(q).scalars().all())

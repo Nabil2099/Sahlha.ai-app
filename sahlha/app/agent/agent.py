@@ -296,14 +296,31 @@ class SahlhaAgent:
             q = self.db.get(repo.m.Question, qid)
             if not q:
                 continue
+            existing = repo.get_attempt_for(self.db, assessment_id, qid)
+            if existing is not None:
+                # Already checked inline (attempt locked at check time): reuse it.
+                results.append({"question_id": qid, "correct": existing.correct,
+                                "student_answer": existing.answer,
+                                "correct_answer": q.correct_answer,
+                                "skill_id": q.skill_id})
+                continue
             qdict = {"id": q.id, "skill_id": q.skill_id, "type": q.question_type,
                      "correct_answer": q.correct_answer}
             res = assessment_tools.evaluate_answer(qdict, answers.get(qid))
             assessment_tools.record_attempt(self.db, student_id=assessment.student_id,
                                             question_id=qid, assessment_id=assessment_id,
                                             answer=answers.get(qid), correct=res["correct"])
+            # Scope memory to the question's bank (course/lesson) — same slug in a
+            # different lesson must not share mastery.
+            bank = repo.get_bank(self.db, q.question_bank_id) if q.question_bank_id else None
+            bank_course = bank.course_id if bank else ""
+            bank_lesson = bank.lesson_id if bank else ""
+            skill_row = (repo.get_skill(self.db, course_id=bank_course, lesson_id=bank_lesson,
+                                        skill_id=q.skill_id) if bank else None)
             student_tools.update_student_memory(self.db, student_id=assessment.student_id,
-                                                skill_id=q.skill_id, correct=res["correct"])
+                                                skill_id=q.skill_id, correct=res["correct"],
+                                                course_id=bank_course, lesson_id=bank_lesson,
+                                                skill_row_id=skill_row.id if skill_row else None)
             st.log("tool:record_attempt", {"question_id": qid, "correct": res["correct"]})
             results.append(res)
         correct = sum(1 for r in results if r["correct"])
