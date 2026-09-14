@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from sahlha.app.database.database import get_db
+from sahlha.app.schemas.api import StartAssessmentRequest, SubmitAssessmentRequest
+from sahlha.app.services import services as svc
+
+router = APIRouter(tags=["assessment"])
+
+
+@router.post("/assessment/start")
+def start(req: StartAssessmentRequest, db: Session = Depends(get_db)):
+    try:
+        return svc.start_assessment(db, student_id=req.student_id, student_name=req.student_name,
+                                    course_id=req.course_id, lesson_id=req.lesson_id, skill_id=req.skill_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.post("/assessment/{assessment_id}/submit")
+def submit(assessment_id: str, req: SubmitAssessmentRequest, db: Session = Depends(get_db)):
+    try:
+        return svc.submit_assessment(db, assessment_id=assessment_id, answers=req.answers)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get("/students/{student_id}/performance")
+def performance(student_id: str, db: Session = Depends(get_db)):
+    try:
+        return svc.student_performance(db, student_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get("/students/{student_id}/skill-progress")
+def skill_progress(student_id: str, course_id: str = "general", lesson_id: str = "lesson_1",
+                   db: Session = Depends(get_db)):
+    """Skill = explanation + exercise: per-skill study/exercise status."""
+    try:
+        return svc.skill_progress(db, student_id=student_id, course_id=course_id, lesson_id=lesson_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
