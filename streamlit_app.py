@@ -33,7 +33,7 @@ with tab_teacher:
 
     st.header("2. Agent splits lesson into skills (+ explanations)")
     st.caption("The agent decides how many skills (one per topic). The slider is only an upper bound.")
-    n_sk = st.slider("max_skills (upper bound)", 1, 20, 10)
+    n_sk = st.slider("max_skills (upper bound, hard cap 6)", 1, 6, 6)
     c1, c2 = st.columns(2)
     if c1.button("Extract skills"):
         r = requests.post(f"{API}/agent/extract-skills",
@@ -175,10 +175,11 @@ with tab_student:
                         answers: dict[str, int] = {}
                         for q in asm["questions"]:
                             st.markdown(f"**{q['question']}**  `[{q['difficulty']}]`")
-                            choice = st.radio("Your answer:", list(enumerate(q["options"])),
-                                              format_func=lambda t: f"{t[0]}. {t[1]}",
+                            opts = list(q["options"])
+                            choice = st.radio("Your answer:", list(range(len(opts))),
+                                              format_func=lambda i, _o=opts: f"{i}. {_o[i]}",
                                               key=f"{asm['assessment_id']}_{q['id']}")
-                            answers[q["id"]] = choice[0]
+                            answers[q["id"]] = choice
                         if st.button("Submit this skill's answers", key=f"sub_{sk['skill_id']}"):
                             r = requests.post(f"{API}/assessment/{asm['assessment_id']}/submit",
                                               json={"answers": answers}, timeout=60)

@@ -47,7 +47,7 @@ SKILL_EXPLANATION_USER_TEMPLATE = """Course: {course_id}\nLesson: {lesson_id}\nS
 
 
 def build_skill_extraction_prompt(*, course_id: str, lesson_id: str,
-                                  context_chunks: list[dict], max_skills: int = 10) -> tuple[str, str]:
+                                  context_chunks: list[dict], max_skills: int = 6) -> tuple[str, str]:
     context = "\n\n".join(f"[chunk {c.get('chunk_id', i)}] {c.get('text', '')}"
                           for i, c in enumerate(context_chunks)) or "(no context retrieved)"
     return SKILL_EXTRACTION_SYSTEM, SKILL_EXTRACTION_USER_TEMPLATE.format(

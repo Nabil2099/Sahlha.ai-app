@@ -209,7 +209,7 @@ def _top_terms(sentences: list[str], k: int = 6) -> list[str]:
     return [w for w, _ in Counter(words).most_common(k)]
 
 
-def fallback_skills(context_chunks: list[dict], lesson_id: str, max_skills: int = 10) -> list[dict]:
+def fallback_skills(context_chunks: list[dict], lesson_id: str, max_skills: int = 6) -> list[dict]:
     """Deterministic grounded splitter: one skill per ~2 sentences (agent-side topic count)."""
     sentences = _sentences(context_chunks)
     if not sentences:

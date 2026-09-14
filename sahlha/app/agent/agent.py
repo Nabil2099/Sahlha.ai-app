@@ -38,7 +38,7 @@ class SahlhaAgent:
         self.state = state or AgentState()
 
     # ---------- SKILL EXTRACTION + EXPLANATION ----------
-    def extract_skills(self, *, course_id: str, lesson_id: str, max_skills: int = 10,
+    def extract_skills(self, *, course_id: str, lesson_id: str, max_skills: int = 6,
                        force: bool = False, n_skills: int | None = None) -> dict:
         """Split a lesson into skills (one per topic; the AGENT decides how many).
 

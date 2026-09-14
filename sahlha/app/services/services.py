@@ -24,7 +24,7 @@ def generate_bank(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
 
 
 def extract_skills(db: Session, *, course_id: str, lesson_id: str,
-                   n_skills: int | None = None, max_skills: int = 10, force: bool = False) -> dict:
+                   n_skills: int | None = None, max_skills: int = 6, force: bool = False) -> dict:
     """Agent splits the lesson into skills AND writes an explanation per skill.
 
     Also ensures the whole-lesson overview explanation exists.
