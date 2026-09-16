@@ -26,10 +26,17 @@ def fetch_skill_image(db: Session, *, course_id: str, lesson_id: str,
     skill = repo.get_skill(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     if skill is None:
         raise ValueError(f"Skill {skill_id} not found in {course_id}/{lesson_id}")
-    if skill.image_path and os.path.exists(skill.image_path) and not force:
+    return _fetch_for_row(db, skill, force=force)
+
+
+def _fetch_for_row(db, skill, force=False):
+    from sahlha.app.config import settings
+    skill_id = getattr(skill, "skill_id", skill.lesson_id)
+    if valid_image_file(skill.image_path) and not force:
         return {"skill_id": skill_id, "path": skill.image_path, "source_url": skill.image_url,
                 "alt": skill.image_alt, "cached": True}
-    query = pexels.build_image_query({"name": skill.name, "skill_id": skill.skill_id,
+    query = pexels.build_image_query({"name": getattr(skill, "name", getattr(skill, "title", "")), "skill_id": skill_id,
+                                      "description": getattr(skill, "description", ""),
                                       "key_concepts": skill.key_concepts or []})
     try:
         found = pexels.fetch_related_image(query)
@@ -41,7 +48,7 @@ def fetch_skill_image(db: Session, *, course_id: str, lesson_id: str,
         raise RuntimeError("No picture is available right now.") from exc
     os.makedirs(settings.image_dir, exist_ok=True)
     digest = hashlib.sha1(found["bytes"]).hexdigest()[:16]
-    path = os.path.join(settings.image_dir, f"{skill.skill_id[:60]}_{digest}.jpg".replace("/", "_"))
+    path = os.path.join(settings.image_dir, f"{digest}.jpg".replace("/", "_"))
     # Atomic write so a concurrent reader never sees a half-written JPEG.
     import tempfile
 
@@ -56,10 +63,21 @@ def fetch_skill_image(db: Session, *, course_id: str, lesson_id: str,
         except OSError:
             pass
         raise
-    skill.image_url = found["page_url"]
-    skill.image_path = path
-    skill.image_alt = found["alt"]
-    db.commit()
+    repo.set_media(db, skill, image_url=found["page_url"], image_path=path, image_alt=found["alt"])
     return {"skill_id": skill_id, "path": path, "source_url": found["page_url"],
             "alt": found["alt"], "photographer": found["photographer"],
             "query": query, "cached": False}
+
+
+def valid_image_file(path):
+    try:
+        return bool(path and os.path.isfile(path) and os.path.getsize(path) >= 1024)
+    except OSError:
+        return False
+
+
+def fetch_lesson_image(db, *, course_id, lesson_id, force=False):
+    row = repo.get_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id)
+    if row is None:
+        raise ValueError("Lesson explanation not found")
+    return _fetch_for_row(db, row, force)

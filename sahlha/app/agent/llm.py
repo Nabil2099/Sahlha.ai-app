@@ -8,80 +8,54 @@ Set GROQ_MODEL to pick the model (default: llama-3.3-70b-versatile).
 from __future__ import annotations
 
 import json
-import os
 import re
 
 
 def _resolve_provider() -> tuple[str, str, str]:
-    """Returns (provider_name, api_key, model). provider is 'groq', 'openai', or ''."""
-    try:
-        from sahlha.app.config import settings
-
-        groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
-        if groq_key:
-            return "groq", groq_key, os.getenv("GROQ_MODEL", settings.groq_model)
-        oai_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
-        if oai_key:
-            return "openai", oai_key, settings.openai_model
-    except Exception:
-        if os.getenv("GROQ_API_KEY"):
-            return "groq", os.getenv("GROQ_API_KEY", ""), os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-        if os.getenv("OPENAI_API_KEY"):
-            return "openai", os.getenv("OPENAI_API_KEY", ""), "gpt-4o-mini"
+    from sahlha.app.config import settings
+    if settings.groq_api_key.strip():
+        return "groq", settings.groq_api_key.strip(), settings.groq_model
+    if settings.openrouter_api_key.strip() and settings.openrouter_model:
+        return "openrouter", settings.openrouter_api_key.strip(), settings.openrouter_model
+    if settings.openai_api_key.strip():
+        return "openai", settings.openai_api_key.strip(), settings.openai_model
     return "", "", ""
 
 
 def llm_available() -> bool:
-    provider, _, _ = _resolve_provider()
-    return bool(provider)
+    return bool(_resolve_provider()[0])
+
+
+def _provider_completion(provider, api_key, model, system, user):
+    from openai import OpenAI
+    from sahlha.app.config import settings
+    base = {"groq": settings.groq_base_url, "openrouter": settings.openrouter_base_url,
+            "openai": settings.openai_base_url}[provider]
+    kwargs = {"api_key": api_key, "max_retries": 0, "timeout": settings.provider_timeout_seconds}
+    if base:
+        kwargs["base_url"] = base
+    with OpenAI(**kwargs) as client:
+        response = client.chat.completions.create(model=model,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.4, response_format={"type": "json_object"})
+        return response.choices[0].message.content or "{}"
 
 
 def _call_llm(system: str, user: str) -> tuple[str, str]:
-    """Calls the configured provider. Returns (raw_text, provider_name)."""
-    provider, api_key, model = _resolve_provider()
-    if provider == "groq":
-        try:
-            from groq import Groq  # native SDK when installed
-
-            client = Groq(api_key=api_key)
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                temperature=0.4,
-                response_format={"type": "json_object"},
-            )
-            return resp.choices[0].message.content or "{}", "groq"
-        except ImportError:
-            pass  # fall through to OpenAI-compatible client
-        from openai import OpenAI
-
-        from sahlha.app.config import settings as _s
-
-        base_url = os.getenv("GROQ_BASE_URL", _s.groq_base_url)
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=0.4,
-            response_format={"type": "json_object"},
-        )
-        return resp.choices[0].message.content or "{}", "groq"
-
-    from openai import OpenAI
-
     from sahlha.app.config import settings
-
-    kwargs: dict = {"api_key": api_key}
-    if settings.openai_base_url:
-        kwargs["base_url"] = settings.openai_base_url
-    client = OpenAI(**kwargs)
-    resp = client.chat.completions.create(
-        model=model or settings.openai_model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.4,
-        response_format={"type": "json_object"},
-    )
-    return resp.choices[0].message.content or "{}", "openai"
+    from sahlha.app.agent.providers import retryable_provider_error, logger
+    provider, key, model = _resolve_provider()
+    if not provider:
+        raise RuntimeError("no-llm-configured")
+    try:
+        return _provider_completion(provider, key, model, system, user), provider
+    except Exception as exc:
+        logger.info("Text provider unavailable: provider=%s category=%s", provider, type(exc).__name__)
+        if provider != "groq" or not retryable_provider_error(exc) or not settings.openrouter_api_key.strip() or not settings.openrouter_model:
+            raise
+    # Exactly one cross-provider attempt; SDK retries are disabled.
+    return _provider_completion("openrouter", settings.openrouter_api_key.strip(),
+                                settings.openrouter_model, system, user), "openrouter"
 
 
 def _extract_json_array(text: str) -> list:
@@ -158,7 +132,7 @@ def generate_questions_llm(system: str, user: str, context_chunks: list[dict],
             return _extract_json_array(raw), provider
         except Exception as exc:
             # Fail soft to grounded fallback so the loop never breaks
-            return fallback_questions(context_chunks, skill_id, n, feedback), f"fallback(llm-error: {exc})"
+            return fallback_questions(context_chunks, skill_id, n, feedback), f"fallback({type(exc).__name__})"
     return fallback_questions(context_chunks, skill_id, n, feedback), "fallback(no-api-key)"
 
 
@@ -180,7 +154,7 @@ def complete_json(system: str, user: str) -> tuple[dict | list, str]:
     except RuntimeError:
         raise
     except Exception as exc:
-        raise RuntimeError(f"llm-error: {exc}") from exc
+        raise RuntimeError(f"llm-error: {type(exc).__name__}") from exc
 
 
 def _sentences(chunks: list[dict]) -> list[str]:

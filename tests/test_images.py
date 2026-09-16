@@ -14,7 +14,7 @@ def test_build_image_query_from_skill_context():
     q = pexels.build_image_query({"name": "Elif Branches (cond_lesson)",
                                   "skill_id": "cond_lesson__elif",
                                   "key_concepts": ["elif keyword", "conditions", "branching"]})
-    assert "Elif" in q and "elif keyword" in q
+    assert "programming" in q and "education" in q
     assert "(" not in q  # "(cond_lesson)" suffix stripped
     assert pexels.build_image_query({"name": "", "skill_id": "x", "key_concepts": []}) == "x"
 
@@ -62,6 +62,12 @@ def test_fetch_skill_image_caches(db_session, monkeypatch, tmp_path):
     calls: list = []
     monkeypatch.setattr(requests, "get", _fake_get_factory(calls))
     skid = _seed_skill(db_session)
+    # Extraction now fills skill and lesson media automatically. Remove only the
+    # skill's cache pointer to exercise an uncached explicit request separately.
+    from sahlha.app.database.repositories import repositories as repo
+    row = repo.get_skill(db_session, course_id="ic", lesson_id="il", skill_id=skid)
+    repo.set_media(db_session, row, image_path="")
+    calls.clear()
     first = image_tools.fetch_skill_image(db_session, course_id="ic", lesson_id="il", skill_id=skid)
     assert first["cached"] is False and first["path"].endswith(".jpg")
     assert first["source_url"].startswith("https://pexels.com")

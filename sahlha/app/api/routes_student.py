@@ -264,3 +264,10 @@ def skill_image(skill_id: str, material_id: str, classroom_id: str | None = None
         raise HTTPException(503, IMAGE_UNAVAILABLE)
     path = _media_file(result["path"], unavailable=IMAGE_UNAVAILABLE)
     return FileResponse(path, media_type="image/jpeg", filename=f"{skill_id}.jpg")
+
+
+@router.get("/materials/{material_id}/study")
+def material_study(material_id: str, classroom_id: str | None = None, supplementary: bool = False,
+                   student: m.User = Depends(deps.require_student), db: Session = Depends(get_db)):
+    course_id, lesson_id = _resolve_scope(db, student, material_id, classroom_id, supplementary)
+    return plat.study_bundle(db, course_id=course_id, lesson_id=lesson_id)

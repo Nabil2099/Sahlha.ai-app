@@ -127,3 +127,14 @@ class SubmitPlatformAssessmentRequest(BaseModel):
 class CheckAnswerRequest(BaseModel):
     question_id: str
     answer: object | None = None
+
+
+class FlagQuestionRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("A flag reason is required")
+        return value.strip()

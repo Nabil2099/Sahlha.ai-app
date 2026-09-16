@@ -1,7 +1,7 @@
 """Material upload/process/skills/banks for teachers (official) and parents (supp)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from sahlha.app.auth import deps
@@ -51,7 +51,7 @@ def _get_visible(material_id: str, user: m.User, db: Session) -> m.LearningMater
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
-def upload_material(title: str = Form(""), classroom_id: str | None = Form(None),
+def upload_material(background_tasks: BackgroundTasks, title: str = Form(""), classroom_id: str | None = Form(None),
                           child_student_id: str | None = Form(None),
                           file: UploadFile = File(...),
                           user: m.User = Depends(deps.current_user),
@@ -72,7 +72,7 @@ def upload_material(title: str = Form(""), classroom_id: str | None = Form(None)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     try:
-        result = plat.process_material(db, mat, data)
+        result = plat.process_material(db, mat, data, background_tasks=background_tasks)
     except ValueError as exc:
         return {"material": plat.material_to_dict(db, mat), "error": str(exc)}
     return {"material": plat.material_to_dict(db, mat),

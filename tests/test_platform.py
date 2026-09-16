@@ -43,6 +43,8 @@ def _material_flow(client, t, room):
     up = _upload(client, t["token"], classroom_id=room["id"], title="Fractions")
     assert up.status_code == 201, up.text
     mat = up.json()["material"]
+    assert mat["status"] == "processing"
+    mat = client.get(f"/materials/{mat['id']}", headers=_auth(t["token"])).json()
     assert mat["status"] == "processed"
     ex = client.post(f"/materials/{mat['id']}/extract-skills", headers=_auth(t["token"]))
     assert ex.status_code == 200, ex.text
@@ -226,7 +228,7 @@ def test_bank_lifecycle_and_security(client):
                     headers=_auth(t["token"]))
     # student assessment works now; correct answers hidden
     start = client.post("/student/assessments/start",
-                        json={"classroom_id": room["id"], "material_id": mat["id"]},
+                        json={"classroom_id": room["id"], "material_id": mat["id"], "skill_id": detail["skill_id"]},
                         headers=_auth(s["token"]))
     assert start.status_code == 200, start.text
     payload = start.json()
@@ -248,7 +250,7 @@ def test_bank_lifecycle_and_security(client):
     client.post("/classrooms/join", json={"join_code": room["join_code"]},
                 headers=_auth(s2["token"]))
     st2 = client.post("/student/assessments/start",
-                      json={"classroom_id": room["id"], "material_id": mat["id"]},
+                      json={"classroom_id": room["id"], "material_id": mat["id"], "skill_id": detail["skill_id"]},
                       headers=_auth(s2["token"])).json()
     forbidden = client.post(f"/student/assessments/{st2['assessment_id']}/submit",
                             json={"answers": {}}, headers=_auth(s["token"]))
@@ -376,7 +378,7 @@ def test_teacher_student_progress_and_parent_view(client):
                        headers=_auth(t["token"])).json()
     client.post(f"/teacher/banks/{banks[0]['id']}/approve", headers=_auth(t["token"]))
     start = client.post("/student/assessments/start",
-                        json={"classroom_id": room["id"], "material_id": mat["id"]},
+                        json={"classroom_id": room["id"], "material_id": mat["id"], "skill_id": banks[0]["skill_id"]},
                         headers=_auth(s["token"])).json()
     client.post(f"/student/assessments/{start['assessment_id']}/submit",
                 json={"answers": {}}, headers=_auth(s["token"]))
@@ -423,7 +425,7 @@ def test_check_answer_locks_attempt(client):
     client.post(f"/teacher/banks/{banks[0]['id']}/approve",
                 headers=_auth(t["token"]))
     start = client.post("/student/assessments/start",
-                        json={"classroom_id": room["id"], "material_id": mat["id"]},
+                        json={"classroom_id": room["id"], "material_id": mat["id"], "skill_id": banks[0]["skill_id"]},
                         headers=_auth(s["token"])).json()
     qid = start["questions"][0]["id"]
     assert "correct_answer" not in start["questions"][0]

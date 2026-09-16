@@ -16,12 +16,7 @@ def chunk_text(text: str, *, chunk_size: int = 800, chunk_overlap: int = 120,
     chunks: list[dict] = []
     if not text:
         return chunks
-    step = max(1, chunk_size - chunk_overlap)
-    idx = start_index
-    for start in range(0, len(text), step):
-        piece = text[start:start + chunk_size].strip()
-        if not piece:
-            break
+    for idx, piece in enumerate(sentence_chunks(text, chunk_size, chunk_overlap), start_index):
         chunks.append({
             "document_id": document_id,
             "course_id": course_id,
@@ -31,7 +26,29 @@ def chunk_text(text: str, *, chunk_size: int = 800, chunk_overlap: int = 120,
             "chunk_index": idx,
             "text": piece,
         })
-        idx += 1
-        if start + chunk_size >= len(text):
-            break
     return chunks
+
+
+def sentence_chunks(text: str, size: int = 800, overlap: int = 120) -> list[str]:
+    """Pack whole sentences; split only a sentence that exceeds the limit."""
+    import re
+    if size < 1 or overlap < 0 or overlap >= size:
+        raise ValueError("Require 0 <= overlap < chunk size")
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_text(text)) if s.strip()]
+    units = [s[i:i + size] for s in sentences for i in range(0, len(s), size)]
+    result, current = [], []
+    for unit in units:
+        if current and len(" ".join(current + [unit])) > size:
+            result.append(" ".join(current))
+            carry = []
+            for sentence in reversed(current):
+                if len(" ".join([sentence] + carry)) > overlap:
+                    break
+                carry.insert(0, sentence)
+            while carry and len(" ".join(carry + [unit])) > size:
+                carry.pop(0)
+            current = carry
+        current.append(unit)
+    if current:
+        result.append(" ".join(current))
+    return result

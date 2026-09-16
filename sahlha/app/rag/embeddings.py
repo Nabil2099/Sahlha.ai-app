@@ -13,7 +13,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
 
-class EmbeddingModel:
+class TfidfEmbeddingModel:
+    backend = "tfidf"
+    dense = False
+
     def __init__(self) -> None:
         self.vectorizer: TfidfVectorizer | None = None
 
@@ -46,8 +49,61 @@ class EmbeddingModel:
         return self.embed([query])
 
 
-_embeddings = EmbeddingModel()
+# Dense dependencies are intentionally imported only on first use.
+import logging
+import threading
 
 
-def get_embeddings() -> EmbeddingModel:
-    return _embeddings
+class DenseEmbeddingModel:
+    dense = True
+
+    def __init__(self, model_name=None):
+        from sahlha.app.config import settings
+        from sentence_transformers import SentenceTransformer
+        self.model_name = model_name or settings.embedding_model
+        self.backend = f"dense:{self.model_name}"
+        self.model = SentenceTransformer(self.model_name)
+
+    def embed(self, texts):
+        result = np.asarray(self.model.encode(texts, normalize_embeddings=True,
+                            show_progress_bar=False), dtype=np.float32)
+        if result.ndim != 2 or result.shape[1] != 384 or not np.isfinite(result).all():
+            raise ValueError("Invalid dense embeddings")
+        return result
+
+    def fit(self, texts):
+        return self.embed(texts)
+
+    def embed_query(self, query):
+        return self.embed([query])
+
+
+EmbeddingModel = TfidfEmbeddingModel  # old imports remain valid
+_embeddings = None
+_lock = threading.RLock()
+
+
+def get_embeddings():
+    global _embeddings
+    from sahlha.app.config import settings
+    with _lock:
+        if _embeddings is None:
+            if settings.dense_embeddings_enabled:
+                try:
+                    _embeddings = DenseEmbeddingModel()
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Dense embeddings unavailable (%s); using TF-IDF", type(exc).__name__)
+            if _embeddings is None:
+                _embeddings = TfidfEmbeddingModel()
+        return _embeddings
+
+
+def use_tfidf():
+    global _embeddings
+    with _lock:
+        _embeddings = TfidfEmbeddingModel()
+        return _embeddings
+
+
+def dense_available():
+    return get_embeddings().dense

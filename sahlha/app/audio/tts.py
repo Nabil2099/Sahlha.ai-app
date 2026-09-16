@@ -12,12 +12,8 @@ import wave
 
 
 def tts_available() -> bool:
-    try:
-        from sahlha.app.config import settings
-        key = (settings.groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
-    except Exception:
-        key = os.getenv("GROQ_API_KEY", "").strip()
-    return bool(key)
+    from sahlha.app.config import settings
+    return bool(settings.groq_api_key.strip() or (settings.openrouter_api_key.strip() and settings.openrouter_tts_model))
 
 
 def split_for_tts(text: str, max_chars: int = 900) -> list[str]:
@@ -64,7 +60,8 @@ def stitch_wavs(wavs: list[bytes]) -> bytes:
 def _synthesize_chunk(text: str, *, api_key: str, model: str, voice: str) -> bytes:
     from groq import Groq
 
-    client = Groq(api_key=api_key)
+    from sahlha.app.config import settings
+    client = Groq(api_key=api_key, max_retries=0, timeout=settings.provider_timeout_seconds)
     resp = client.audio.speech.create(model=model, voice=voice, input=text,
                                       response_format="wav")
     data = resp.read()
@@ -80,20 +77,68 @@ def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
     text = (text or "").strip()
     if not text:
         raise ValueError("Nothing to synthesize: empty text")
-    # Strip defensively: `.env` values like `GROQ_API_KEY= <key>` must not fail
-    # auth because of surrounding whitespace. The key itself is never logged.
-    api_key = (settings.groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
-    if not api_key:
-        raise RuntimeError("Groq TTS needs GROQ_API_KEY (and accepted PlayAI model terms).")
-    try:
-        from groq import Groq  # noqa: F401
-    except ImportError as exc:
-        raise RuntimeError("Groq TTS needs the 'groq' package (pip install groq).") from exc
-    voice = (voice or os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice) or "").strip() or settings.groq_tts_voice
+    primary_voice = (voice or settings.groq_tts_voice).strip()
     chunks = split_for_tts(text, settings.groq_tts_max_chars)
+    from sahlha.app.agent.providers import retryable_provider_error
+    if settings.groq_api_key.strip():
+        try:
+            wavs = [_synthesize_chunk(c, api_key=settings.groq_api_key.strip(),
+                    model=settings.groq_tts_model, voice=primary_voice) for c in chunks]
+            result = stitch_wavs(wavs)
+            if not valid_wav(result):
+                raise RuntimeError("Invalid provider audio")
+            return result, primary_voice
+        except Exception as exc:
+            if not retryable_provider_error(exc):
+                raise RuntimeError("Audio is unavailable: primary speech configuration or response error") from exc
+    if settings.openrouter_api_key.strip() and settings.openrouter_tts_model:
+        try:
+            # Regenerate the entire recording with one provider/voice, never mix formats.
+            backup_voice = settings.openrouter_tts_voice
+            result = stitch_wavs([_openrouter_chunk(c, backup_voice) for c in chunks])
+            if not valid_wav(result):
+                raise RuntimeError("Invalid backup audio")
+            return result, backup_voice
+        except Exception as exc:
+            raise RuntimeError("Audio is unavailable right now.") from exc
+    raise RuntimeError("Audio requires GROQ_API_KEY or configured OpenRouter speech")
+
+
+def valid_wav(data: bytes) -> bool:
     try:
-        wavs = [_synthesize_chunk(c, api_key=api_key, model=settings.groq_tts_model, voice=voice)
-                for c in chunks]
-    except Exception as exc:
-        raise RuntimeError(f"Groq TTS request failed: {exc}") from exc
-    return stitch_wavs(wavs), voice
+        with wave.open(io.BytesIO(data), "rb") as stream:
+            return stream.getnframes() > 0 and bool(stream.readframes(1))
+    except (EOFError, wave.Error, OSError):
+        return False
+
+
+def _openrouter_chunk(text: str, voice: str) -> bytes:
+    from openai import OpenAI
+    from sahlha.app.config import settings
+    with OpenAI(api_key=settings.openrouter_api_key.strip(), base_url=settings.openrouter_base_url,
+                max_retries=0, timeout=settings.provider_timeout_seconds) as client:
+        response = client.audio.speech.create(model=settings.openrouter_tts_model, voice=voice,
+                    input=text, response_format=settings.openrouter_tts_format)
+        data = response.read()
+    if settings.openrouter_tts_format == "pcm":
+        if not data or len(data) % 2:
+            raise RuntimeError("Invalid PCM response")
+        out = io.BytesIO()
+        with wave.open(out, "wb") as stream:
+            stream.setnchannels(1)
+            stream.setsampwidth(2)
+            stream.setframerate(settings.openrouter_tts_sample_rate)
+            stream.writeframes(data)
+        return out.getvalue()
+    if settings.openrouter_tts_format == "mp3":
+        # Optional system ffmpeg converts compressed output to the existing WAV contract.
+        import shutil
+        import subprocess
+        executable = shutil.which("ffmpeg")
+        if not executable:
+            raise RuntimeError("MP3 speech needs ffmpeg or configure PCM speech")
+        result = subprocess.run([executable, "-v", "error", "-i", "pipe:0", "-f", "wav", "-ac", "1",
+                                 "-ar", str(settings.openrouter_tts_sample_rate), "pipe:1"],
+                                input=data, capture_output=True, timeout=settings.provider_timeout_seconds, check=True)
+        return result.stdout
+    raise ValueError("Unsupported OpenRouter speech format")

@@ -17,6 +17,10 @@ from sahlha.app.database.database import init_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    if settings.embedding_warmup:
+        from threading import Thread
+        from sahlha.app.rag.embeddings import get_embeddings
+        Thread(target=get_embeddings, name="embedding-warmup", daemon=True).start()
     yield
 
 
@@ -45,12 +49,14 @@ app.include_router(routes_student.router)
 app.include_router(routes_teacher_platform.router)
 app.include_router(routes_parent.router)
 # Legacy AI-loop APIs (kept working; Streamlit dev tool + existing tests use them).
-app.include_router(routes_documents.router)
-app.include_router(routes_agent.router)
-app.include_router(routes_teacher.router)
-app.include_router(routes_assessment.router)
-app.include_router(routes_audio.router)
-app.include_router(routes_images.router)
+if settings.legacy_dev_api_enabled:
+    app.include_router(routes_documents.router)
+    app.include_router(routes_agent.router)
+    app.include_router(routes_teacher.router)
+    app.include_router(routes_assessment.router)
+    app.include_router(routes_audio.router)
+    app.include_router(routes_images.router)
+
 
 
 @app.get("/")

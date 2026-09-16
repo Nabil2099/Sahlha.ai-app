@@ -10,6 +10,7 @@ from sahlha.app.database.repositories import repositories as repo
 def save_questions(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
                    questions: list[dict], teacher_feedback: str = "") -> dict:
     """Validate structured LLM output then persist as a new pending_review version."""
+    questions = [dict(q, skill_id=skill_id) for q in questions]
     validated = QuestionList(questions=questions).questions  # rejects malformed output
     bank = repo.create_bank(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id,
                             questions=[q.to_record() for q in validated],
@@ -35,6 +36,14 @@ def get_approved_questions(db: Session, *, course_id: str | None = None,
                            lesson_id: str | None = None, skill_id: str | None = None) -> list[dict]:
     rows = repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     return [{"id": q.id, "bank_id": q.question_bank_id, "skill_id": q.skill_id,
+             "course_id": q.bank.course_id, "lesson_id": q.bank.lesson_id,
              "type": q.question_type, "question": q.question_text, "options": q.options,
              "correct_answer": q.correct_answer, "explanation": q.explanation,
              "difficulty": q.difficulty} for q in rows]
+
+
+def flag_reasons(db, *, course_id, lesson_id, skill_id):
+    return repo.get_flag_reasons_for_skill(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+
+get_bank = repo.get_bank
+get_question = repo.get_question

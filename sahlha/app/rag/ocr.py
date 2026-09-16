@@ -6,6 +6,11 @@ from __future__ import annotations
 
 import io
 import time
+import os
+import re
+import shutil
+from pathlib import Path
+from sahlha.app.config import settings
 from dataclasses import dataclass
 
 
@@ -55,6 +60,29 @@ def _extract_pptx(data: bytes) -> str:
     return "\n".join(parts)
 
 
+
+def discover_tesseract():
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    candidates = [settings.tesseract_cmd]
+    for root in (os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")):
+        if root:
+            candidates.append(str(Path(root) / "Tesseract-OCR" / "tesseract.exe"))
+    return next((p for p in candidates if p and Path(p).is_file()), None)
+
+
+def discover_poppler():
+    found = shutil.which("pdftoppm")
+    if found:
+        return str(Path(found).parent)
+    candidates = [Path(settings.poppler_path)] if settings.poppler_path else []
+    root = os.environ.get("ProgramFiles", "")
+    if root:
+        candidates.extend(Path(root).glob("poppler*/Library/bin"))
+        candidates.extend(Path(root).glob("poppler*/bin"))
+    return next((str(p) for p in candidates if any((p / name).is_file() for name in ("pdftoppm", "pdftoppm.exe"))), None)
+
 def _try_ocr_images(data: bytes, suffix: str) -> tuple[str, str]:
     """Best-effort OCR via tesseract. Returns (text, method)."""
     try:
@@ -63,20 +91,24 @@ def _try_ocr_images(data: bytes, suffix: str) -> tuple[str, str]:
     except ImportError:
         return "", "ocr:unavailable (pytesseract/Pillow not installed)"
     try:
+        binary = discover_tesseract()
+        if binary:
+            pytesseract.pytesseract.tesseract_cmd = binary
+        poppler = discover_poppler()
         if suffix == ".pdf":
             try:
                 from pdf2image import convert_from_bytes, pdfinfo_from_bytes
             except ImportError:
                 return "", "ocr:unavailable (pdf2image not installed)"
             deadline = time.monotonic() + 45
-            pages = int(pdfinfo_from_bytes(data, timeout=10)["Pages"])
+            pages = int(pdfinfo_from_bytes(data, timeout=10, poppler_path=poppler)["Pages"])
             texts = []
             for page in range(1, pages + 1):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("OCR exceeded 45 seconds; try a smaller scan")
                 images = convert_from_bytes(data, dpi=150, first_page=page,
-                                            last_page=page, timeout=remaining)
+                                            last_page=page, timeout=remaining, poppler_path=poppler)
                 try:
                     for image in images:
                         remaining = deadline - time.monotonic()
@@ -90,14 +122,19 @@ def _try_ocr_images(data: bytes, suffix: str) -> tuple[str, str]:
         with Image.open(io.BytesIO(data)) as image:
             return pytesseract.image_to_string(image, timeout=45), "ocr:tesseract"
     except Exception as exc:  # OCR is best-effort; never crash ingestion
-        return "", f"ocr:failed ({exc})"
+        if type(exc).__name__ in {"TesseractNotFoundError", "PDFInfoNotInstalledError"}:
+            return "", "ocr:unavailable"
+        return "", "ocr:failed (try a smaller scan)"
 
 
 def extract_document_text(file_bytes: bytes, filename: str) -> ExtractedDocument:
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if suffix == ".pdf":
         text, pages = _extract_pdf_native(file_bytes)
-        if text.strip():
+        meaningful = re.sub(r"[^\w]", "", text)
+        # A short, complete native sentence is useful even on a tiny handout.
+        complete_short_text = len(text.split()) >= 5 and text.rstrip().endswith((".", "!", "?"))
+        if len(meaningful) >= settings.ocr_min_chars or complete_short_text:
             return ExtractedDocument(text=text.strip(), num_pages=pages, is_scanned=False, method="pypdf")
         ocr_text, method = _try_ocr_images(file_bytes, ".pdf")
         if ocr_text.strip():

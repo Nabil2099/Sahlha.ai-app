@@ -59,12 +59,14 @@ def test_pdf_upload_success_and_corruption(client, monkeypatch, tmp_path):
             data={"classroom_id": room["id"]}, files={"file": ("lesson.pdf", data, "application/pdf")})
     result = upload(text_pdf())
     assert result.status_code == 201
-    assert result.json()["material"]["status"] == "processed"
+    assert result.json()["material"]["status"] == "processing"
+    material_id = result.json()["material"]["id"]
+    assert client.get(f"/materials/{material_id}", headers=_auth(teacher["token"])).json()["status"] == "processed"
     result = upload(b"broken pdf")
     assert result.status_code == 201
     assert result.json()["material"]["status"] == "failed"
     assert result.json()["error"]
-    assert upload(text_pdf()).json()["material"]["status"] == "processed"
+    assert upload(text_pdf()).json()["material"]["status"] == "processing"
 
 
 def test_scan_missing_ocr_has_actionable_error(client, monkeypatch, tmp_path):

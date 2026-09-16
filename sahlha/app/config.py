@@ -9,6 +9,19 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/sahlha.db"
     upload_dir: str = "./data/uploads"
     vectorizer_path: str = "./data/tfidf_vectorizer.pkl"
+    vector_cache_path: str = "./data/vectors.npz"
+    dense_embeddings_enabled: bool = True
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_warmup: bool = True
+    vector_incremental_churn: float = 0.35
+    mmr_lambda: float = 0.7
+    dense_min_score: float = 0.05
+    retrieval_backoff_ratio: float = 0.5
+    tesseract_cmd: str = ""
+    poppler_path: str = ""
+    ocr_min_chars: int = 50
+    enable_llm_critique: bool = False
+    legacy_dev_api_enabled: bool = False
 
     # ---- Auth (JWT) ----
     # Prototype default; override via SAHLHA_JWT_SECRET in real deployments.
@@ -33,6 +46,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = ""
+    provider_timeout_seconds: float = 45
 
     # Optional OpenAI override (used only if Groq key is absent).
     openai_api_key: str = ""
@@ -45,6 +62,10 @@ class Settings(BaseSettings):
     groq_tts_voice: str = "troy"
     groq_tts_max_chars: int = 900  # per TTS request; longer text is chunked + stitched
     audio_dir: str = "./data/audio"
+    openrouter_tts_model: str = ""
+    openrouter_tts_voice: str = "alloy"
+    openrouter_tts_format: str = "pcm"
+    openrouter_tts_sample_rate: int = 24000
 
     # Pexels image search (one related image per skill). Empty => image tool unavailable.
     pexels_api_key: str = ""

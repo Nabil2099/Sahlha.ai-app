@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 class GeneratedQuestion(BaseModel):
     skill_id: str = "general"
     type: Literal["multiple_choice", "short_answer"] = "multiple_choice"
-    question: str
+    question: str = Field(min_length=1)
     options: list[str] = Field(default_factory=list)
     correct_answer: int | str = 0
     explanation: str = ""
@@ -37,7 +37,7 @@ class QuestionList(BaseModel):
             if q.type == "multiple_choice":
                 if len(q.options) != 4:
                     raise ValueError(f"MCQ must have exactly 4 options, got {len(q.options)}: {q.question[:60]}")
-                if not isinstance(q.correct_answer, int) or not (0 <= q.correct_answer <= 3):
+                if isinstance(q.correct_answer, bool) or not isinstance(q.correct_answer, int) or not (0 <= q.correct_answer <= 3):
                     raise ValueError(f"correct_answer must be 0-3 for MCQ: {q.question[:60]}")
         return qs
 

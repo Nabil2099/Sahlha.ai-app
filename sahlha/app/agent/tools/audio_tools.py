@@ -38,10 +38,10 @@ def _cached_or_synth(text: str, voice: str | None) -> tuple[str, str, bool]:
     from sahlha.app.config import settings
 
     os.makedirs(settings.audio_dir, exist_ok=True)
-    voice_used = sanitize_voice(voice) or (os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice) or "").strip() or settings.groq_tts_voice
-    digest = hashlib.sha1(f"{settings.groq_tts_model}|{voice_used}|{text}".encode()).hexdigest()[:16]
+    voice_used = sanitize_voice(voice) or settings.groq_tts_voice
+    digest = hashlib.sha1(f"{settings.groq_tts_model}|{voice_used}|{settings.openrouter_tts_model}|{settings.openrouter_tts_voice}|{settings.openrouter_tts_format}|{settings.openrouter_tts_sample_rate}|{text}".encode()).hexdigest()[:16]
     path = os.path.join(settings.audio_dir, f"{digest}.wav")
-    if os.path.exists(path):
+    if valid_audio_file(path):
         return path, voice_used, True
     try:
         wav, voice_used = tts.synthesize(text, voice_used)
@@ -51,15 +51,17 @@ def _cached_or_synth(text: str, voice: str | None) -> tuple[str, str, bool]:
         # Provider detail (model names, terms URLs, HTTP errors) is logged
         # server-side only. Clients get a calm generic 503 so lessons never
         # break and no provider internals leak to student devices.
-        logger.warning("TTS synthesis unavailable: %s", str(exc)[:300])
+        logger.warning("TTS synthesis unavailable: %s", type(exc).__name__)
         raise RuntimeError("Audio is unavailable right now.") from exc
     except Exception as exc:  # never leak provider internals/secrets to clients
         logger.warning("TTS synthesis failed: %s", type(exc).__name__)
         raise RuntimeError("Audio is unavailable right now.") from exc
+    if not tts.valid_wav(wav):
+        raise RuntimeError("Audio is unavailable right now.")
     # Re-check after synthesis: a concurrent request for the same text may
     # have populated the cache while we were calling the provider, in which
     # case we reuse it instead of writing a duplicate file.
-    if os.path.exists(path):
+    if valid_audio_file(path):
         return path, voice_used, True
     # Atomic write so a concurrent reader never sees a half-written WAV.
     fd, tmp_path = tempfile.mkstemp(dir=settings.audio_dir, suffix=".wav.part")
@@ -86,6 +88,7 @@ def skill_explanation_to_audio(db: Session, *, course_id: str, lesson_id: str,
         raise ValueError(f"Skill {skill_id} has no explanation yet — run extract-skills first")
     text = f"{skill.name}. {skill.explanation}"
     path, voice_used, cached = _cached_or_synth(text, voice)
+    repo.set_media(db, skill, audio_path=path)
     return {"audio_id": os.path.basename(path).replace(".wav", ""), "path": path,
             "skill_id": skill_id, "voice": voice_used, "cached": cached,
             "chars": len(text)}
@@ -99,6 +102,16 @@ def lesson_explanation_to_audio(db: Session, *, course_id: str, lesson_id: str,
         raise ValueError(f"Lesson {course_id}/{lesson_id} has no explanation yet — run explain-lesson first")
     text = f"{row.title}. {row.explanation}" if row.title else row.explanation
     path, voice_used, cached = _cached_or_synth(text, voice)
+    repo.set_media(db, row, audio_path=path)
     return {"audio_id": os.path.basename(path).replace(".wav", ""), "path": path,
             "lesson_id": lesson_id, "voice": voice_used, "cached": cached,
             "chars": len(text)}
+
+
+def valid_audio_file(path: str) -> bool:
+    import wave
+    try:
+        with wave.open(path, "rb") as stream:
+            return stream.getnframes() > 0 and bool(stream.readframes(1))
+    except (OSError, EOFError, wave.Error, AttributeError):
+        return False

@@ -12,18 +12,16 @@ PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 
 
 def pexels_available() -> bool:
-    try:
-        from sahlha.app.config import settings
-        key = (settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")).strip()
-    except Exception:
-        key = os.getenv("PEXELS_API_KEY", "").strip()
-    return bool(key)
+    from sahlha.app.config import settings
+    return bool(settings.pexels_api_key.strip())
 
 
 def build_image_query(skill: dict) -> str:
     """Query from the skill's context: name + key concepts (pure — unit tested)."""
-    parts = [skill.get("name", "")] + list(skill.get("key_concepts", [])[:3])
+    parts = [skill.get("name", ""), skill.get("description", "")] + list(skill.get("key_concepts", [])[:3])
     query = re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip(" ,.-")
+    if re.search(r"\b(python|while|loops?|for loop|if|else|elif|functions?|algorithm|programming|code|coding)\b", query, re.I):
+        return "computer programming coding education technology"
     query = re.sub(r"\(.*?\)", "", query).strip()  # drop "(lesson)" style suffixes
     return re.sub(r"\s+", " ", query).strip()[:120] or skill.get("skill_id", "education")
 
@@ -33,7 +31,7 @@ def _api_key() -> str:
 
     # Strip defensively: `.env` values like `PEXELS_API_KEY= <key>` must not
     # fail auth because of surrounding whitespace. The key is never logged.
-    key = (settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")).strip()
+    key = settings.pexels_api_key.strip()
     if not key:
         raise RuntimeError("Image search needs PEXELS_API_KEY in the backend .env.")
     return key
@@ -59,7 +57,11 @@ def fetch_related_image(query: str) -> dict:
     """Search + download the top result. Raises ValueError when nothing found."""
     import requests
 
-    photos = search_pexels(query)
+    photos = []
+    for candidate in dict.fromkeys([query, "education technology", "learning", "school classroom"]):
+        photos = search_pexels(candidate)
+        if photos:
+            break
     if not photos:
         raise ValueError(f"No Pexels images found for query: {query!r}")
     top = photos[0]

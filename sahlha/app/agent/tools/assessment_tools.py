@@ -10,74 +10,66 @@ from sahlha.app.config import settings
 from sahlha.app.database.repositories import repositories as repo
 
 
-def select_questions(db: Session, *, student_id: str, course_id: str | None = None,
-                     lesson_id: str | None = None, skill_id: str | None = None,
-                     n_per_bank: int | None = None) -> tuple[list[dict], dict]:
-    """Select exactly `n_per_bank` questions from EACH approved question bank.
+class SelectionError(ValueError):
+    def __init__(self, message, metadata):
+        super().__init__(message)
+        self.metadata = metadata
 
-    Banks are per-skill, so the assessment covers every skill with the same
-    memory-aware heuristics applied inside each bank:
-    1. Questions previously failed by this student (retry, if still approved)
-    2. Questions in weak skills (accuracy < 0.6)
-    3. Unseen questions
-    4. Fill remainder, balancing difficulty, avoiding repetition within assessment.
-    """
-    from sahlha.app.agent.tools import question_tools, student_tools
 
-    n_per_bank = n_per_bank or settings.assessment_num_questions
+def select_questions(db: Session, *, student_id: str, course_id=None, lesson_id=None,
+                     skill_id=None, n_per_bank=None):
+    from collections import Counter
+    from sahlha.app.agent.tools import question_tools
+    n = n_per_bank or settings.assessment_num_questions
     pool = question_tools.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+    banks = repo.scoped_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id, status="approved")
+    skills = repo.scoped_skills(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+    key = lambda row: (row.course_id, row.lesson_id, row.skill_id)
+    covered = {key(b) for b in banks}
+    missing = [s for s in skills if key(s) not in covered]
+    flagged = repo.get_flagged_question_ids(db)
+    bank_ids = {b.id for b in banks}
+    flags_in_scope = [q.id for b in banks for q in repo.get_questions(db, b.id) if q.id in flagged]
+    meta = {"rationale": [], "weak_skills": [], "failed_retried": [], "per_bank": {},
+            "flagged_excluded": len(flags_in_scope), "covered_skills": sorted({b.skill_id for b in banks}),
+            "missing_skills": [s.skill_id for s in missing], "n_per_bank": n}
+    if missing:
+        raise SelectionError('No usable approved bank for skill "' + (missing[0].name or missing[0].skill_id) + '". Generate and approve its questions.', meta)
     if not pool:
-        raise ValueError("No approved questions found. Approve a bank first.")
-    # Group pool by bank (stable order) — one selection round per bank.
-    banks: dict[str, list[dict]] = {}
+        raise SelectionError("No usable approved questions found. Approve or regenerate a bank first.", meta)
+    history = repo.get_attempts(db, student_id, limit=10000)
+    seen = {a.question_id for a in history}
+    failed = set(repo.get_failed_question_ids(db, student_id))
+    perf = repo.get_skill_performance(db, student_id, course_id=course_id, lesson_id=lesson_id)
+    weak = {(p.course_id, p.lesson_id, p.skill_id) for p in perf if p.total_attempts and p.accuracy < settings.mastery_developing_min}
+    meta["weak_skills"] = sorted({k[2] for k in weak & covered})
+    grouped = {b.id: [] for b in banks}
     for q in pool:
-        banks.setdefault(q["bank_id"], []).append(q)
-
-    history = student_tools.get_student_history(db, student_id)
-    failed_ids = set(student_tools.get_failed_questions(db, student_id))
-    seen_ids = {h["question_id"] for h in history}
-    perf = {p["skill_id"]: p["accuracy"] for p in student_tools.get_student_skill_performance(db, student_id)}
-    weak_skills = {s for s, acc in perf.items() if acc < 0.6}
-
-    selected: list[dict] = []
-    rationale: list[str] = []
-    per_bank: dict[str, int] = {}
-
-    def _take(group: list[dict], cands: list[dict], reason: str):
-        for q in cands:
-            if len(group) >= n_per_bank:
-                break
-            if q["id"] not in {s["id"] for s in group}:
-                group.append(q)
-                rationale.append(f"{q['id']} (bank={q['bank_id']}, {q['skill_id']}/{q['difficulty']}): {reason}")
-
-    for bank_id, group_pool in banks.items():
-        if len(group_pool) < n_per_bank:
-            raise ValueError(
-                f"Bank {bank_id} has only {len(group_pool)} approved questions, "
-                f"need {n_per_bank} per bank.")
-        by_id = {q["id"]: q for q in group_pool}
-        group: list[dict] = []
-        _take(group, [by_id[i] for i in failed_ids if i in by_id], "retry previously failed")
-        _take(group, [q for q in group_pool if q["skill_id"] in weak_skills
-                      and q["id"] not in {s["id"] for s in group}], "targets weak skill")
-        _take(group, [q for q in group_pool if q["id"] not in seen_ids
-                      and q["id"] not in {s["id"] for s in group}], "unseen question")
-        have = {q["difficulty"] for q in group}
-        for diff in ("easy", "medium", "hard"):
-            if len(group) >= n_per_bank:
-                break
-            if diff not in have:
-                _take(group, [q for q in group_pool if q["difficulty"] == diff
-                              and q["id"] not in {s["id"] for s in group}],
-                      f"balances difficulty ({diff})")
-        _take(group, group_pool, "fill remainder")
-        selected.extend(group[:n_per_bank])
-        per_bank[bank_id] = len(group[:n_per_bank])
-
-    return selected, {"rationale": rationale, "weak_skills": sorted(weak_skills),
-                      "failed_retried": sorted(failed_ids & {s["id"] for s in selected}),
-                      "per_bank": per_bank, "n_per_bank": n_per_bank}
+        grouped[q["bank_id"]].append(q)
+    selected, used = [], set()
+    # Weak skills are presented first without sacrificing coverage of other banks.
+    for bank in sorted(banks, key=lambda b: (key(b) not in weak, b.created_at, b.id)):
+        candidates = grouped[bank.id]
+        if len(candidates) < n:
+            row = next((s for s in skills if key(s) == key(bank)), None)
+            name = row.name if row else bank.skill_id
+            raise SelectionError(f'Skill "{name}" has only {len(candidates)} usable approved questions; {n} are required. Regenerate or approve more questions.', meta)
+        group, difficulties = [], Counter()
+        while len(group) < n:
+            remaining = [q for q in candidates if q["id"] not in used]
+            q = min(remaining, key=lambda q: (0 if q["id"] in failed else 1 if q["id"] not in seen else 2,
+                    difficulties[q["difficulty"]], {"easy": 0, "medium": 1, "hard": 2}.get(q["difficulty"], 3), q["id"]))
+            used.add(q["id"])
+            group.append(q)
+            difficulties[q["difficulty"]] += 1
+            reason = "retry previously failed" if q["id"] in failed else "unseen question" if q["id"] not in seen else "remaining valid question"
+            if key(bank) in weak:
+                reason += "; targets weak skill"
+            meta["rationale"].append(f"{q['id']}: {reason}; balances difficulty ({q['difficulty']})")
+        selected.extend(group)
+        meta["per_bank"][bank.id] = len(group)
+    meta["failed_retried"] = sorted(failed & used)
+    return selected, meta
 
 
 def evaluate_answer(question: dict, student_answer) -> dict:
@@ -100,3 +92,28 @@ def record_attempt(db: Session, *, student_id: str, question_id: str, assessment
     att = repo.record_attempt(db, student_id=student_id, question_id=question_id,
                               assessment_id=assessment_id, answer=answer, correct=correct)
     return {"attempt_id": att.id, "correct": att.correct}
+
+def study_context(db, selected):
+    # Each question already carries its real bank scope; deduplicate by full identity.
+    from sahlha.app.agent.tools.explanation_tools import serialize_lesson
+    from sahlha.app.agent.tools.skill_tools import serialize_skill
+    pairs = sorted({(q["course_id"], q["lesson_id"]) for q in selected})
+    wanted = {(q["course_id"], q["lesson_id"], q["skill_id"]) for q in selected}
+    explanations, lessons = [], []
+    for course, lesson in pairs:
+        rows = repo.list_skills(db, course_id=course, lesson_id=lesson)
+        found = {r.skill_id for r in rows}
+        explanations.extend(serialize_skill(r) for r in rows if (course, lesson, r.skill_id) in wanted)
+        for _, _, skill in sorted(k for k in wanted if k[:2] == (course, lesson) and k[2] not in found):
+            explanations.append({"skill_id": skill, "name": skill, "course_id": course, "lesson_id": lesson,
+                                 "description": "", "explanation": "", "key_concepts": []})
+        row = repo.get_lesson_explanation(db, course_id=course, lesson_id=lesson)
+        if row and row.explanation:
+            lessons.append(serialize_lesson(row))
+    return explanations, lessons[0] if len(pairs) == 1 and lessons else None
+
+
+create_assessment = repo.create_assessment
+get_assessment = repo.get_assessment
+get_attempt_for = repo.get_attempt_for
+finish_assessment = repo.finish_assessment

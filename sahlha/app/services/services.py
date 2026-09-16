@@ -48,11 +48,8 @@ def explain_lesson(db: Session, *, course_id: str, lesson_id: str, force: bool =
 
 def get_lesson(db: Session, *, course_id: str, lesson_id: str) -> dict:
     """Student-facing study bundle: lesson overview + per-skill explanations."""
-    row = repo.get_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id)
-    return {"lesson": ({"id": row.id, "course_id": row.course_id, "lesson_id": row.lesson_id,
-                        "title": row.title, "explanation": row.explanation,
-                        "key_concepts": row.key_concepts or []} if row else None),
-            "skills": list_skills(db, course_id=course_id, lesson_id=lesson_id)}
+    from sahlha.app.services.platform import study_bundle
+    return study_bundle(db, course_id=course_id, lesson_id=lesson_id)
 
 
 def list_skills(db: Session, *, course_id: str, lesson_id: str,
@@ -60,11 +57,8 @@ def list_skills(db: Session, *, course_id: str, lesson_id: str,
     rows = repo.list_skills(db, course_id=course_id, lesson_id=lesson_id)
     if skill_id:
         rows = [s for s in rows if s.skill_id == skill_id]
-    return [{"id": s.id, "course_id": s.course_id, "lesson_id": s.lesson_id, "skill_id": s.skill_id,
-             "name": s.name, "description": s.description, "explanation": s.explanation,
-             "key_concepts": s.key_concepts or [], "has_image": bool(s.image_path),
-             "image_alt": s.image_alt or ""}
-            for s in rows]
+    from sahlha.app.agent.tools.skill_tools import serialize_skill
+    return [serialize_skill(s) for s in rows]
 
 
 def generate_lesson_banks(db: Session, *, course_id: str, lesson_id: str,

@@ -3,6 +3,7 @@
 Thin routes call into here; the AI loop itself stays in agent/tools/services.
 """
 from __future__ import annotations
+from sahlha.app.agent.tools import audio_tools, image_tools
 
 from sqlalchemy.orm import Session
 
@@ -58,14 +59,15 @@ def create_material_record(db: Session, *, uploader: m.User, title: str, filenam
     raise ValueError("Only teachers and parents can upload materials")
 
 
-def process_material(db: Session, mat: m.LearningMaterial, file_bytes: bytes) -> dict:
+def process_material(db: Session, mat: m.LearningMaterial, file_bytes: bytes, *, background_tasks=None) -> dict:
     """Run OCR/RAG ingestion for a platform material (uses the existing pipeline)."""
     course_id, lesson_id = mapping.scope_for_material(mat)
     prepo.set_material_status(db, mat, "processing")
     try:
         result = ingestion.ingest_upload(
             db, file_bytes=file_bytes, filename=mat.original_filename or "upload",
-            course_id=course_id, lesson_id=lesson_id, skill_id="general")
+            course_id=course_id, lesson_id=lesson_id, skill_id="general",
+            defer_index=background_tasks is not None)
     except Exception as exc:
         db.rollback()
         prepo.set_material_status(db, mat, "failed", f"Could not read this file: {exc}")
@@ -87,11 +89,19 @@ def process_material(db: Session, mat: m.LearningMaterial, file_bytes: bytes) ->
         raise ValueError("This scan needs text recognition (OCR), which is unavailable right now.")
     mat.document_id = result["document_id"]
     db.commit()
-    prepo.set_material_status(db, mat, "processed")
+    if not mat.title or mat.title == mat.original_filename or mat.title.lower() in {"lesson", "upload", "document", "untitled"}:
+        mat.title = result["title"]
+    if background_tasks is None:
+        prepo.set_material_status(db, mat, "processed")
+    else:
+        prepo.set_material_status(db, mat, "processing", "Indexing lesson content")
+        background_tasks.add_task(index_material, db.get_bind(), mat.id)
     return result
 
 
 def extract_material_skills(db: Session, mat: m.LearningMaterial, *, force: bool = False) -> dict:
+    if mat.processing_status not in {"processed", "skills_ready", "banks_ready"}:
+        raise ValueError("Material processing must finish before extracting skills")
     course_id, lesson_id = mapping.scope_for_material(mat)
     out = legacy.extract_skills(db, course_id=course_id, lesson_id=lesson_id, force=force)
     prepo.set_material_status(db, mat, "skills_ready", f"{len(out['skills'])} skills")
@@ -101,6 +111,8 @@ def extract_material_skills(db: Session, mat: m.LearningMaterial, *, force: bool
 def generate_material_banks(db: Session, mat: m.LearningMaterial, *, teacher: m.User,
                             teacher_feedback: str = "", n_questions: int = 10) -> dict:
     """One bank per skill; stamps platform ownership on each new bank."""
+    if mat.processing_status not in {"processed", "skills_ready", "banks_ready"}:
+        raise ValueError("Material processing must finish before generating questions")
     course_id, lesson_id = mapping.scope_for_material(mat)
     before = {b.id for b in repo.list_banks(db, lesson_id=lesson_id)}
     out = legacy.generate_lesson_banks(db, course_id=course_id, lesson_id=lesson_id,
@@ -132,19 +144,22 @@ def material_to_dict(db: Session, mat: m.LearningMaterial) -> dict:
 
 # ------------------------------------------------------------------ skills
 def skill_dict(db: Session, course_id: str, lesson_id: str, row) -> dict:
-    banks = repo.list_banks(db, lesson_id=lesson_id, skill_id=row.skill_id)
+    banks = repo.scoped_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id)
     approved = [b for b in banks if b.status == "approved"]
     pending = [b for b in banks if b.status == "pending_review"]
     return {"id": row.id, "course_id": row.course_id, "lesson_id": row.lesson_id,
             "skill_id": row.skill_id, "name": row.name, "description": row.description,
             "explanation": row.explanation, "key_concepts": row.key_concepts or [],
-            "has_image": bool(row.image_path), "image_alt": row.image_alt or "",
-            "approved_questions": sum(len(repo.get_questions(db, b.id)) for b in approved),
+            "has_image": image_tools.valid_image_file(row.image_path), "image_alt": row.image_alt or "",
+            "has_audio": audio_tools.valid_audio_file(row.audio_path),
+            "approved_questions": len(repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id)),
             "bank_status": ("approved" if approved else "pending" if pending
                             else ("rejected" if banks else "none"))}
 
 
 def update_skill(db: Session, row, **fields) -> dict:
+    if any(key in fields and fields[key] is not None and fields[key] != getattr(row, key) for key in ("name", "explanation")):
+        row.audio_path = ""
     for key in ("name", "description", "key_concepts", "explanation"):
         if key in fields and fields[key] is not None:
             setattr(row, key, fields[key])
@@ -165,6 +180,8 @@ def delete_skill(db: Session, row) -> None:
 
 # --------------------------------------------------------------- questions
 def edit_question(db: Session, bank: m.QuestionBank, question_id: str, fields: dict) -> dict:
+    if bank.status == "approved":
+        raise ValueError("Approved bank history is preserved. Regenerate a new bank version before editing questions.")
     q = db.get(m.Question, question_id)
     if q is None or q.question_bank_id != bank.id:
         raise ValueError("Question not found")
@@ -175,6 +192,8 @@ def edit_question(db: Session, bank: m.QuestionBank, question_id: str, fields: d
 
 
 def remove_question(db: Session, bank: m.QuestionBank, question_id: str) -> dict:
+    if bank.status == "approved":
+        raise ValueError("Approved bank history is preserved. Regenerate a new bank version before editing questions.")
     q = db.get(m.Question, question_id)
     if q is None or q.question_bank_id != bank.id:
         raise ValueError("Question not found")
@@ -190,6 +209,8 @@ def regenerate_question(db: Session, bank: m.QuestionBank, question_id: str,
     from sahlha.app.agent.schemas import QuestionList
     from sahlha.app.agent.tools import rag_tools
 
+    if bank.status == "approved":
+        raise ValueError("Approved bank history is preserved. Regenerate a new bank version before editing questions.")
     q = db.get(m.Question, question_id)
     if q is None or q.question_bank_id != bank.id:
         raise ValueError("Question not found")
@@ -198,6 +219,9 @@ def regenerate_question(db: Session, bank: m.QuestionBank, question_id: str,
         top_k=5, course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id)
     if not chunks:
         chunks = rag_tools.retrieve_lesson(db, bank.course_id, bank.lesson_id, top_k=5)
+    reasons = repo.get_flag_reasons_for_skill(db, course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id)
+    if reasons:
+        feedback += "\nPrevious teacher feedback to avoid:\n" + "\n".join(reasons)
     system, user = build_question_prompt(
         course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id,
         context_chunks=chunks,
@@ -205,6 +229,8 @@ def regenerate_question(db: Session, bank: m.QuestionBank, question_id: str,
         n=3)
     generated, backend = generate_questions_llm(system, user, chunks, bank.skill_id, 3,
                                                 feedback or "different question")
+    from sahlha.app.agent.tools.critique_tools import critique_and_top_up
+    generated, _ = critique_and_top_up(generated, chunks, bank.skill_id, 3, feedback)
     validated = QuestionList(questions=generated).questions
     record = validated[0].to_record()
     record["skill_id"] = bank.skill_id
@@ -262,10 +288,7 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
     per_skill = _attempts_by_skill(db, student_id, course_id, lesson_id)
     perf_rows = {p.skill_id: p for p in repo.get_skill_performance(
         db, student_id, course_id=course_id, lesson_id=lesson_id)}
-    # Legacy fallback: unscoped rows (older data without course/lesson).
-    if not perf_rows:
-        perf_rows = {p.skill_id: p for p in repo.get_skill_performance(db, student_id)
-                     if not p.course_id and not p.lesson_id}
+    approved_questions = repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
     out = []
     for row in repo.list_skills(db, course_id=course_id, lesson_id=lesson_id):
         atts = per_skill.get(row.skill_id, [])
@@ -277,15 +300,18 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
             attempted = perf.total_attempts
         else:
             attempted = len(atts)
-        approved = [b for b in repo.list_banks(db, lesson_id=lesson_id, skill_id=row.skill_id)
-                    if b.status == "approved"]
-        bank_questions = sum(len(repo.get_questions(db, b.id)) for b in approved)
+        usable = [q for q in approved_questions if q.skill_id == row.skill_id]
+        counts = {}
+        for question in usable:
+            counts[question.question_bank_id] = counts.get(question.question_bank_id, 0) + 1
+        bank_questions = len(usable)
+        ready = bool(counts) and all(count >= settings.assessment_num_questions for count in counts.values())
         out.append({"id": row.id, "skill_id": row.skill_id, "name": row.name,
                     "description": row.description, "explanation": bool(row.explanation),
                     "attempted": attempted, "correct": correct if not perf else perf.correct_attempts,
                     "accuracy": accuracy, "state": mastery.mastery_state(
                         attempted=attempted, accuracy=accuracy),
-                    "exercise_ready": bank_questions >= settings.assessment_num_questions,
+                    "exercise_ready": ready,
                     "bank_questions": bank_questions})
     return out
 
@@ -350,7 +376,8 @@ def skill_bundle(db: Session, *, student_id: str, course_id: str, lesson_id: str
         explanation = _shorten(explanation)
     return {"skill_id": row.skill_id, "name": row.name, "description": row.description,
             "explanation": explanation, "key_concepts": row.key_concepts or [],
-            "has_image": bool(row.image_path), "image_alt": row.image_alt or "",
+            "has_image": image_tools.valid_image_file(row.image_path), "image_alt": row.image_alt or "",
+            "has_audio": audio_tools.valid_audio_file(row.audio_path),
             "position": idx + 1, "total": len(skills),
             "state": states.get(skill_id, {}).get("state", mastery.NOT_STARTED),
             "exercise_ready": states.get(skill_id, {}).get("exercise_ready", False),
@@ -394,7 +421,8 @@ def help_for_skill(db: Session, *, student_id: str, course_id: str, lesson_id: s
     if kind == "visual":
         profiles.record_support_signal(db, student_id, "visual_helped")
         return {"kind": kind, "title": "Picture help",
-                "has_image": bool(row.image_path), "image_alt": row.image_alt or "",
+                "has_image": image_tools.valid_image_file(row.image_path), "image_alt": row.image_alt or "",
+            "has_audio": audio_tools.valid_audio_file(row.audio_path),
                 "key_concepts": row.key_concepts or [],
                 "body": "Look at the picture and the key ideas below, one at a time."}
     if kind == "word":
@@ -434,9 +462,11 @@ def start_platform_assessment(db: Session, *, student: m.User, classroom_id: str
         course_id = mapping.course_for_classroom(classroom_id)
     elif child_scope:
         course_id = mapping.course_for_child(student.id)
+    if not course_id:
+        raise ValueError("Choose a classroom or material before starting practice")
     out = legacy.start_assessment(db, student_id=student.id, student_name=student.name,
                                   course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
-    return out
+    return {k: v for k, v in out.items() if k not in {"trace", "selection_meta"}}
 
 
 def check_platform_answer(db: Session, *, student: m.User, assessment_id: str,
@@ -508,13 +538,15 @@ def submit_platform_assessment(db: Session, *, student: m.User, assessment_id: s
         # stray signal value (the dedicated endpoint validates strictly).
         if sig in profiles.KNOWN_SIGNALS:
             profiles.record_support_signal(db, student.id, sig)
-    # Attach friendly mastery states for the touched skills.
+    # Attach friendly mastery states only within this assessment scope.
     states: dict[str, str] = {}
-    for row in repo.get_skill_performance(db, student.id):
+    for row in repo.get_skill_performance(db, student.id, course_id=assessment.course_id or None,
+                                         lesson_id=assessment.lesson_id or None):
         states[row.skill_id] = mastery.mastery_state(attempted=row.total_attempts,
                                                      accuracy=row.accuracy)
     out["mastery_states"] = states
-    return out
+    out["skills_needing_review"] = [skill for skill, state in states.items() if state == mastery.NEEDS_PRACTICE]
+    return {k: v for k, v in out.items() if k not in {"trace", "selection_meta"}}
 
 
 def student_grades(db: Session, student_id: str, classroom_id: str | None = None) -> list[dict]:
@@ -528,10 +560,10 @@ def student_grades(db: Session, student_id: str, classroom_id: str | None = None
         bank = repo.get_bank(db, a.question_bank_id) if a.question_bank_id else None
         entry = {"id": a.id, "score": a.score, "num_questions": len(a.question_ids or []),
                  "created_at": a.created_at.isoformat() if a.created_at else None,
-                 "course_id": bank.course_id if bank else "",
-                 "lesson_id": bank.lesson_id if bank else "",
+                 "course_id": a.course_id or (bank.course_id if bank else ""),
+                 "lesson_id": a.lesson_id or (bank.lesson_id if bank else ""),
                  "skill_id": bank.skill_id if bank else "",
-                 "classroom_id": mapping.classroom_id_from_course(bank.course_id) if bank else None}
+                 "classroom_id": mapping.classroom_id_from_course(a.course_id or (bank.course_id if bank else ""))}
         if classroom_id and entry["classroom_id"] != classroom_id:
             continue
         out.append(entry)
@@ -653,3 +685,46 @@ def teacher_overview(db: Session, teacher_id: str) -> dict:
             "num_classrooms": len(rooms), "num_students": total_students,
             "num_materials": materials_count, "pending_banks": pending,
             "needing_support": needing[:20]}
+
+
+def index_material(bind, material_id: str):
+    """Worker owns a fresh session; status becomes processed only after indexing."""
+    from sahlha.app.rag.vectorstore import rebuild_index
+    with Session(bind=bind) as db:
+        mat = prepo.get_material(db, material_id)
+        if mat is None:
+            return
+        try:
+            rebuild_index(db)
+            prepo.set_material_status(db, mat, "processed")
+        except Exception:
+            db.rollback()
+            prepo.set_material_status(db, mat, "failed", "Indexing failed. Please process this material again.")
+
+
+def flag_bank_question(db, bank, question_id, reason, teacher_id):
+    question = repo.get_question(db, question_id)
+    if question is None or question.question_bank_id != bank.id:
+        raise ValueError("Question not found")
+    flag = repo.flag_question(db, question_id, reason, teacher_id)
+    return {"id": flag.id, "question_id": flag.question_id, "kind": flag.kind, "reason": flag.reason}
+
+
+def bank_flags(db, bank):
+    return [{"id": f.id, "question_id": f.question_id, "kind": f.kind, "reason": f.reason,
+             "created_at": f.created_at.isoformat()} for f in repo.list_flags(db, bank_id=bank.id)]
+
+
+def study_bundle(db, *, course_id, lesson_id):
+    from collections import Counter
+    from sahlha.app.agent.tools.skill_tools import serialize_skill
+    from sahlha.app.agent.tools.explanation_tools import serialize_lesson
+    lesson, skills, banks, questions = repo.study_rows(db, course_id=course_id, lesson_id=lesson_id)
+    counts = Counter(q.question_bank_id for q in questions)
+    out = []
+    for skill in skills:
+        own = [b for b in banks if b.skill_id == skill.skill_id]
+        out.append({**serialize_skill(skill), "exercise_ready": bool(own) and all(
+            counts[b.id] >= settings.assessment_num_questions for b in own),
+            "approved_questions": sum(counts[b.id] for b in own)})
+    return {"lesson": serialize_lesson(lesson) if lesson else None, "skills": out}

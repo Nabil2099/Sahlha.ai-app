@@ -171,6 +171,10 @@ class LessonExplanation(Base):
     title: Mapped[str] = mapped_column(String(256), default="")
     explanation: Mapped[str] = mapped_column(Text, default="")
     key_concepts: Mapped[list] = mapped_column(JSON, default=list)
+    image_url: Mapped[str] = mapped_column(String(1024), default="")
+    image_path: Mapped[str] = mapped_column(String(1024), default="")
+    image_alt: Mapped[str] = mapped_column(String(512), default="")
+    audio_path: Mapped[str] = mapped_column(String(1024), default="")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
@@ -194,6 +198,7 @@ class Skill(Base):
     image_url: Mapped[str] = mapped_column(String(1024), default="")  # Pexels source page
     image_path: Mapped[str] = mapped_column(String(1024), default="")  # local cached file
     image_alt: Mapped[str] = mapped_column(String(512), default="")
+    audio_path: Mapped[str] = mapped_column(String(1024), default="")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
@@ -230,6 +235,7 @@ class Question(Base):
     correct_answer: Mapped[int | str] = mapped_column(JSON, default=0)
     explanation: Mapped[str] = mapped_column(Text, default="")
     difficulty: Mapped[str] = mapped_column(String(32), default="medium")
+    retired: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now)
 
     bank: Mapped[QuestionBank] = relationship("QuestionBank", back_populates="questions")
@@ -249,6 +255,9 @@ class Assessment(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     student_id: Mapped[str] = mapped_column(String(32), ForeignKey("students.id"))
     question_bank_id: Mapped[str] = mapped_column(String(32), ForeignKey("question_banks.id"))
+    course_id: Mapped[str] = mapped_column(String(128), default="")
+    lesson_id: Mapped[str] = mapped_column(String(128), default="")
+    selection_meta: Mapped[dict] = mapped_column(JSON, default=dict)
     question_ids: Mapped[list] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(32), default="started")  # started|submitted
     score: Mapped[float] = mapped_column(Float, default=0.0)
@@ -286,3 +295,21 @@ class StudentSkillPerformance(Base):
     correct_attempts: Mapped[int] = mapped_column(Integer, default=0)
     accuracy: Mapped[float] = mapped_column(Float, default=0.0)
     last_updated: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class QuestionFeedback(Base):
+    __tablename__ = "question_feedback"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    question_id: Mapped[str] = mapped_column(String(32), ForeignKey("questions.id"), index=True)
+    teacher_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), default="flag")
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_now)
+
+
+class BankVersionCounter(Base):
+    __tablename__ = "bank_version_counters"
+    course_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    lesson_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)

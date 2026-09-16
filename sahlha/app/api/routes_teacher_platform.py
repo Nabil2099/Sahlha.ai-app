@@ -14,7 +14,7 @@ from sahlha.app.database import models as m
 from sahlha.app.database.database import get_db
 from sahlha.app.database.repositories import platform as prepo
 from sahlha.app.database.repositories import repositories as repo
-from sahlha.app.schemas.platform import (EditQuestionRequest, RegenerateBankRequest,
+from sahlha.app.schemas.platform import (FlagQuestionRequest, EditQuestionRequest, RegenerateBankRequest,
                                          RegenerateQuestionRequest)
 from sahlha.app.services import platform as plat
 from sahlha.app.services import services as legacy
@@ -26,8 +26,11 @@ def _owned_bank(bank_id: str, teacher: m.User, db: Session) -> m.QuestionBank:
     bank = repo.get_bank(db, bank_id)
     if bank is None:
         raise HTTPException(404, "Question bank not found")
-    # Legacy banks (no owner) are visible to any teacher; platform banks are owned.
-    if bank.teacher_id and bank.teacher_id != teacher.id:
+    from sahlha.app.services import mapping
+    classroom_id = bank.classroom_id or mapping.classroom_id_from_course(bank.course_id)
+    if classroom_id:
+        deps.teacher_classroom(classroom_id, teacher, db)
+    if bank.course_id.startswith("child:") or (bank.teacher_id and bank.teacher_id != teacher.id):
         raise HTTPException(404, "Question bank not found")
     return bank
 
@@ -49,7 +52,7 @@ def list_banks(status: str | None = None, classroom_id: str | None = None,
                             classroom_id=classroom_id, material_id=material_id)
     # Also include legacy unowned banks so old data stays reviewable.
     if not classroom_id and not material_id:
-        banks = banks + [b for b in repo.list_banks(db, status=status) if not b.teacher_id]
+        banks = banks + [b for b in repo.list_banks(db, status=status) if not b.teacher_id and not b.course_id.startswith(("class:", "child:"))]
     return [{"id": b.id, "course_id": b.course_id, "lesson_id": b.lesson_id,
              "skill_id": b.skill_id, "version": b.version, "status": b.status,
              "feedback": b.teacher_feedback, "classroom_id": b.classroom_id,
@@ -140,3 +143,18 @@ def teacher_student_progress(classroom_id: str, student_id: str,
     if not prepo.is_enrolled(db, classroom_id, student_id):
         raise HTTPException(404, "Student not found")
     return plat.student_progress_detail(db, student_id=student_id, classroom_id=classroom_id)
+
+
+@router.post("/banks/{bank_id}/questions/{question_id}/flag", status_code=201)
+def flag_question(bank_id: str, question_id: str, req: FlagQuestionRequest,
+                  teacher: m.User = Depends(deps.require_teacher), db: Session = Depends(get_db)):
+    bank = _owned_bank(bank_id, teacher, db)
+    try:
+        return plat.flag_bank_question(db, bank, question_id, req.reason, teacher.id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get("/banks/{bank_id}/flags")
+def list_flags(bank_id: str, teacher: m.User = Depends(deps.require_teacher), db: Session = Depends(get_db)):
+    return plat.bank_flags(db, _owned_bank(bank_id, teacher, db))

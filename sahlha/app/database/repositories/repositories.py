@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import desc, select
-from sqlalchemy.orm import Session
+from sqlalchemy import desc, select, update, func, or_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
 
 from sahlha.app.database import models as m
 
@@ -67,6 +68,8 @@ def upsert_lesson_explanation(db: Session, *, course_id: str, lesson_id: str,
     if title:
         row.title = title
     if explanation:
+        if row.explanation != explanation or (title and row.title != title):
+            row.audio_path = ""
         row.explanation = explanation
     if key_concepts is not None:
         row.key_concepts = key_concepts
@@ -122,6 +125,8 @@ def get_skill_by_slug(db: Session, skill_id: str) -> m.Skill | None:
 
 
 def set_skill_explanation(db: Session, skill: m.Skill, explanation: str) -> None:
+    if skill.explanation != explanation:
+        skill.audio_path = ""
     skill.explanation = explanation
     skill.updated_at = datetime.datetime.utcnow()
     db.commit()
@@ -144,17 +149,34 @@ def create_bank(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
                 questions: list[dict], teacher_feedback: str = "",
                 teacher_id: str | None = None, classroom_id: str | None = None,
                 material_id: str | None = None) -> m.QuestionBank:
-    version = next_bank_version(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
-    bank = m.QuestionBank(course_id=course_id, lesson_id=lesson_id, skill_id=skill_id,
-                          version=version, status="pending_review", teacher_feedback=teacher_feedback,
-                          teacher_id=teacher_id, classroom_id=classroom_id, material_id=material_id)
-    db.add(bank)
-    db.flush()
-    for qd in questions:
-        db.add(m.Question(question_bank_id=bank.id, **qd))
-    db.commit()
-    db.refresh(bank)
-    return bank
+    # Counter UPDATE obtains the database write lock; concurrent writers cannot
+    # allocate the same version, including on old banks lacking a unique index.
+    for attempt in range(3):
+        try:
+            key = dict(course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+            counter = db.get(m.BankVersionCounter, (course_id, lesson_id, skill_id))
+            if counter is None:
+                with db.begin_nested():
+                    db.add(m.BankVersionCounter(**key, version=next_bank_version(db, **key) - 1))
+                    db.flush()
+            version = db.execute(update(m.BankVersionCounter).where(
+                m.BankVersionCounter.course_id == course_id, m.BankVersionCounter.lesson_id == lesson_id,
+                m.BankVersionCounter.skill_id == skill_id).values(version=m.BankVersionCounter.version + 1)
+                .returning(m.BankVersionCounter.version)).scalar_one()
+            bank = m.QuestionBank(**key, version=version, status="pending_review", teacher_feedback=teacher_feedback,
+                                  teacher_id=teacher_id, classroom_id=classroom_id, material_id=material_id)
+            db.add(bank)
+            db.flush()
+            for qd in questions:
+                db.add(m.Question(question_bank_id=bank.id, **qd))
+            db.commit()
+            db.refresh(bank)
+            return bank
+        except IntegrityError:
+            db.rollback()
+            if attempt == 2:
+                raise
+    raise RuntimeError("Unable to allocate bank version")
 
 
 def get_bank(db: Session, bank_id: str) -> m.QuestionBank | None:
@@ -191,7 +213,8 @@ def update_question(db: Session, question: m.Question, **fields) -> m.Question:
 
 
 def delete_question(db: Session, question: m.Question) -> None:
-    db.delete(question)
+    # Preserve attempt and feedback history while removing the question from use.
+    question.retired = True
     db.commit()
 
 
@@ -204,14 +227,15 @@ def set_bank_status(db: Session, bank: m.QuestionBank, status: str, feedback: st
 
 
 def get_questions(db: Session, bank_id: str) -> list[m.Question]:
-    q = select(m.Question).where(m.Question.question_bank_id == bank_id)
+    q = select(m.Question).where(m.Question.question_bank_id == bank_id, m.Question.retired.is_(False))
     return list(db.execute(q).scalars().all())
 
 
 def get_approved_questions(db: Session, *, course_id: str | None = None,
                            lesson_id: str | None = None, skill_id: str | None = None) -> list[m.Question]:
-    q = select(m.Question).join(m.QuestionBank, m.Question.question_bank_id == m.QuestionBank.id).where(
-        m.QuestionBank.status == "approved")
+    q = select(m.Question).options(joinedload(m.Question.bank)).join(m.QuestionBank, m.Question.question_bank_id == m.QuestionBank.id).where(
+        m.QuestionBank.status == "approved", m.Question.retired.is_(False),
+        ~m.Question.id.in_(select(m.QuestionFeedback.question_id).where(m.QuestionFeedback.kind == "flag")))
     if course_id:
         q = q.where(m.QuestionBank.course_id == course_id)
     if lesson_id:
@@ -240,9 +264,11 @@ def get_student(db: Session, student_id: str) -> m.Student | None:
     return db.get(m.Student, student_id)
 
 
-def create_assessment(db: Session, *, student_id: str, question_bank_id: str, question_ids: list[str]) -> m.Assessment:
+def create_assessment(db: Session, *, student_id: str, question_bank_id: str, question_ids: list[str],
+                      course_id: str = "", lesson_id: str = "", selection_meta: dict | None = None) -> m.Assessment:
     a = m.Assessment(student_id=student_id, question_bank_id=question_bank_id,
-                     question_ids=question_ids, status="started")
+                     question_ids=question_ids, status="started", course_id=course_id or "",
+                     lesson_id=lesson_id or "", selection_meta=selection_meta or {})
     db.add(a)
     db.commit()
     db.refresh(a)
@@ -296,14 +322,20 @@ def upsert_skill_performance(db: Session, *, student_id: str, skill_id: str, cor
             m.StudentSkillPerformance.skill_id == skill_id)
         perf = db.execute(q).scalars().first()
     if perf is None:
-        # Legacy fallback matches ONLY unscoped rows; a row scoped to a different
-        # lesson must never absorb another lesson's attempts.
-        q = select(m.StudentSkillPerformance).where(
+        legacy = db.scalar(select(m.StudentSkillPerformance).where(
             m.StudentSkillPerformance.student_id == student_id,
             m.StudentSkillPerformance.skill_id == skill_id,
-            m.StudentSkillPerformance.course_id == "",
-            m.StudentSkillPerformance.lesson_id == "")
-        perf = db.execute(q).scalars().first()
+            or_(m.StudentSkillPerformance.course_id == "", m.StudentSkillPerformance.course_id.is_(None)),
+            or_(m.StudentSkillPerformance.lesson_id == "", m.StudentSkillPerformance.lesson_id.is_(None))))
+        if legacy is not None:
+            scopes = set(db.execute(select(m.QuestionBank.course_id, m.QuestionBank.lesson_id)
+                .join(m.Question, m.Question.question_bank_id == m.QuestionBank.id)
+                .join(m.StudentAttempt, m.StudentAttempt.question_id == m.Question.id)
+                .where(m.StudentAttempt.student_id == student_id, m.Question.skill_id == skill_id)).all())
+            if not scopes:
+                scopes = {(r.course_id, r.lesson_id) for r in scoped_skills(db, skill_id=skill_id)}
+            if not course_id and not lesson_id or scopes == {(course_id, lesson_id)}:
+                perf = legacy
     if perf is None:
         perf = m.StudentSkillPerformance(student_id=student_id, skill_id=skill_id,
                                          course_id=course_id or "", lesson_id=lesson_id or "",
@@ -323,22 +355,7 @@ def upsert_skill_performance(db: Session, *, student_id: str, skill_id: str, cor
         perf.correct_attempts += 1
     perf.accuracy = perf.correct_attempts / perf.total_attempts if perf.total_attempts else 0.0
     perf.last_updated = datetime.datetime.utcnow()
-    try:
-        db.commit()
-    except Exception:
-        # Pre-platform DBs may still enforce the legacy unscoped uniqueness:
-        # merge into the existing row instead of failing.
-        db.rollback()
-        q = select(m.StudentSkillPerformance).where(
-            m.StudentSkillPerformance.student_id == student_id,
-            m.StudentSkillPerformance.skill_id == skill_id)
-        perf = db.execute(q).scalars().first()
-        perf.total_attempts += 1
-        if correct:
-            perf.correct_attempts += 1
-        perf.accuracy = perf.correct_attempts / perf.total_attempts if perf.total_attempts else 0.0
-        perf.last_updated = datetime.datetime.utcnow()
-        db.commit()
+    db.commit()
     db.refresh(perf)
     return perf
 
@@ -352,3 +369,74 @@ def get_skill_performance(db: Session, student_id: str, *,
     if lesson_id:
         q = q.where(m.StudentSkillPerformance.lesson_id == lesson_id)
     return list(db.execute(q).scalars().all())
+
+
+# Append-only quality feedback; approval/rejection are separate workflow actions.
+def flag_question(db, question_id, reason, teacher_id=None):
+    if not db.get(m.Question, question_id):
+        raise ValueError("Question not found")
+    if not reason or not reason.strip():
+        raise ValueError("A flag reason is required")
+    row = m.QuestionFeedback(question_id=question_id, reason=reason.strip(), teacher_id=teacher_id, kind="flag")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def list_flags(db, *, bank_id=None):
+    query = select(m.QuestionFeedback).join(m.Question, m.Question.id == m.QuestionFeedback.question_id)
+    if bank_id:
+        query = query.where(m.Question.question_bank_id == bank_id)
+    return list(db.scalars(query.order_by(m.QuestionFeedback.created_at)))
+
+
+def get_flagged_question_ids(db):
+    return set(db.scalars(select(m.QuestionFeedback.question_id).where(m.QuestionFeedback.kind == "flag")))
+
+
+def get_flag_reasons_for_skill(db, *, course_id, lesson_id, skill_id):
+    return list(db.scalars(select(m.QuestionFeedback.reason).join(m.Question,
+        m.Question.id == m.QuestionFeedback.question_id).join(m.QuestionBank,
+        m.QuestionBank.id == m.Question.question_bank_id).where(m.QuestionFeedback.kind == "flag",
+        m.QuestionBank.course_id == course_id, m.QuestionBank.lesson_id == lesson_id,
+        m.QuestionBank.skill_id == skill_id).order_by(m.QuestionFeedback.created_at.desc()).limit(20)))
+
+
+def set_media(db, row, **fields):
+    for name in ("audio_path", "image_path", "image_url", "image_alt"):
+        if name in fields:
+            setattr(row, name, fields[name])
+    db.commit()
+
+
+def get_question(db, question_id):
+    return db.get(m.Question, question_id)
+
+
+def scoped_banks(db, *, course_id=None, lesson_id=None, skill_id=None, status=None):
+    query = select(m.QuestionBank).order_by(m.QuestionBank.created_at, m.QuestionBank.id)
+    for name, value in (("course_id", course_id), ("lesson_id", lesson_id), ("skill_id", skill_id), ("status", status)):
+        if value:
+            query = query.where(getattr(m.QuestionBank, name) == value)
+    return list(db.scalars(query))
+
+
+def scoped_skills(db, *, course_id=None, lesson_id=None, skill_id=None):
+    query = select(m.Skill)
+    for name, value in (("course_id", course_id), ("lesson_id", lesson_id), ("skill_id", skill_id)):
+        if value:
+            query = query.where(getattr(m.Skill, name) == value)
+    return list(db.scalars(query))
+
+
+def study_rows(db, *, course_id, lesson_id):
+    banks = scoped_banks(db, course_id=course_id, lesson_id=lesson_id, status="approved")
+    questions = get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
+    return get_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id), list_skills(db, course_id=course_id, lesson_id=lesson_id), banks, questions
+
+
+def finish_assessment(db, assessment, score):
+    assessment.status = "submitted"
+    assessment.score = score
+    db.commit()
