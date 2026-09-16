@@ -1,18 +1,19 @@
-import 'dart:typed_data';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/api/api_client.dart';
 import '../../../core/audio/audio_service.dart';
 import '../../../core/theme/sahlha_colors.dart';
 import '../../../core/theme/sahlha_spacing.dart';
 import '../../../core/widgets/sahlha_widgets.dart';
 import '../data/student_repository.dart';
 import '../domain/skill_models.dart';
-import 'practice_controller.dart';
+import 'journey_presentation.dart';
+import 'widgets/learning_journey.dart'
+    show StudentCanvas, JourneyEyebrow, LearningMark;
+import 'widgets/help_me_sheet.dart';
+import 'widgets/skill_media.dart'
+    show LessonSkeleton, ReadAloudButton, SkillVisualCard;
 
 /// One skill at a time: short explanation, key idea, one primary action,
 /// and a single "Help me" entry point.
@@ -32,99 +33,89 @@ class SkillLessonScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
-    final bundle = ref.watch(studentSkillBundleProvider(
+    // A deep link without its material scope can never resolve server-side:
+    // fail locally with a way back instead of firing a doomed request.
+    if (materialId.isEmpty) {
+      return Scaffold(
+        appBar: SahlhaAppBar(
+          title: 'A little understanding',
+          onBack: () => context.go(
+            learningLocation(
+              classroomId: classroomId,
+              supplementary: supplementary,
+            ),
+          ),
+        ),
+        body: StudentCanvas(
+          child: ErrorState(
+            message: "We couldn't open this lesson.",
+            onRetry: () => context.go(
+              learningLocation(
+                classroomId: classroomId,
+                supplementary: supplementary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    final bundleProvider = studentSkillBundleProvider(
       skillId: skillId,
       materialId: materialId,
       classroomId: classroomId,
       supplementary: supplementary,
-    ));
+    );
+    final bundle = ref.watch(bundleProvider);
+    void back() {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go(
+          learningLocation(
+            classroomId: classroomId,
+            supplementary: supplementary,
+          ),
+        );
+      }
+    }
+
     return Scaffold(
-      appBar: const SahlhaAppBar(title: 'Lesson'),
-      body: bundle.when(
-        loading: () => const LoadingState(message: 'Opening your lesson…'),
-        error: (e, _) => ErrorState(
-            message: e.toString(),
-            onRetry: () => ref.invalidate(studentSkillBundleProvider(
-                skillId: skillId,
-                materialId: materialId,
-                classroomId: classroomId,
-                supplementary: supplementary))),
-        data: (skill) => SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(SahlhaSpacing.page),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Skill ${skill.position} of ${skill.total}',
-                    style: text.bodySmall
-                        ?.copyWith(color: SahlhaColors.muted)),
-                const SizedBox(height: SahlhaSpacing.sm),
-                SahlhaProgressBar(value: skill.position / skill.total),
-                const SizedBox(height: SahlhaSpacing.lg),
-                Row(
-                  children: [
-                    Expanded(
-                        child: Text(skill.name, style: text.headlineSmall)),
-                    const SizedBox(width: SahlhaSpacing.sm),
-                    SkillStatusBadge(state: skill.state),
-                  ],
-                ),
-                const SizedBox(height: SahlhaSpacing.md),
-                if (skill.hasImage) ...[
-                  _SkillImage(
-                      skillId: skillId,
-                      materialId: materialId,
-                      classroomId: classroomId,
-                      supplementary: supplementary),
-                  const SizedBox(height: SahlhaSpacing.md),
-                ],
-                Text(
-                  skill.explanation.isEmpty
-                      ? skill.description
-                      : skill.explanation,
-                  style: text.bodyLarge,
-                ),
-                if (skill.keyConcepts.isNotEmpty) ...[
-                  const SizedBox(height: SahlhaSpacing.lg),
-                  Text('Key ideas', style: text.titleMedium),
-                  const SizedBox(height: SahlhaSpacing.sm),
-                  ...skill.keyConcepts.map((c) => Padding(
-                        padding: const EdgeInsets.only(
-                            bottom: SahlhaSpacing.xs),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.check,
-                                size: 18, color: SahlhaColors.teal),
-                            const SizedBox(width: SahlhaSpacing.sm),
-                            Expanded(
-                                child: Text(c, style: text.bodyMedium)),
-                          ],
-                        ),
-                      )),
-                ],
-                const SizedBox(height: SahlhaSpacing.xl),
-                SahlhaPrimaryButton(
-                  label: skill.exerciseReady ? 'Practice this skill' : 'Practice (coming soon)',
-                  onPressed: skill.exerciseReady
-                      ? () {
-                          ref.read(practiceControllerProvider.notifier).reset();
-                          context.push(
-                              '/student/practice?classroomId=${classroomId ?? ''}&materialId=$materialId&skillId=$skillId&supplementary=$supplementary');
-                        }
-                      : null,
-                ),
-                const SizedBox(height: SahlhaSpacing.sm),
-                SizedBox(
-                  width: double.infinity,
-                  child: SahlhaSecondaryButton(
-                    label: 'Help me',
-                    onPressed: () => _openHelp(context, ref, skill),
+      appBar: SahlhaAppBar(title: 'A little understanding', onBack: back),
+      body: StudentCanvas(
+        child: bundle.when(
+          loading: () => const LessonSkeleton(),
+          error: (_, _) => ErrorState(
+            message: "We couldn't open this lesson.",
+            onRetry: () => ref.invalidate(bundleProvider),
+          ),
+          data: (skill) => _LessonReading(
+            key: ValueKey('$materialId:$skillId'),
+            skill: skill,
+            skillId: skillId,
+            materialId: materialId,
+            classroomId: classroomId,
+            supplementary: supplementary,
+            help: () => _openHelp(context, ref, skill),
+            showVisual: () => _showVisual(context, hasImage: skill.hasImage),
+            continueLearning: () {
+              if (skill.exerciseReady) {
+                context.push(
+                  practiceLocation(
+                    materialId: materialId,
+                    skillId: skillId,
+                    classroomId: classroomId,
+                    supplementary: supplementary,
                   ),
-                ),
-              ],
-            ),
+                );
+              } else {
+                context.go(
+                  learningLocation(
+                    classroomId: classroomId,
+                    supplementary: supplementary,
+                  ),
+                );
+              }
+            },
           ),
         ),
       ),
@@ -132,81 +123,83 @@ class SkillLessonScreen extends ConsumerWidget {
   }
 
   Future<void> _openHelp(
-      BuildContext context, WidgetRef ref, SkillBundle skill) async {
-    final order = skill.helpOrder;
-    final first = order.take(3).toList();
-    final rest = order.skip(3).toList();
-    var showMore = false;
-    await showSahlhaSheet<void>(
+    BuildContext context,
+    WidgetRef ref,
+    SkillBundle skill,
+  ) async {
+    final kind = await showSahlhaSheet<String>(context, const HelpMeSheet());
+    if (kind != null && context.mounted) {
+      await _showHelp(context, ref, kind, hasImage: skill.hasImage);
+    }
+  }
+
+  /// "Show visually" surfaces the same skill visual used in the lesson,
+  /// or a calm note when the backend has no picture for this skill.
+  void _showVisual(BuildContext context, {required bool hasImage}) {
+    final text = Theme.of(context).textTheme;
+    showSahlhaSheet<void>(
       context,
-      StatefulBuilder(
-        builder: (ctx, setSheet) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('How can I help?',
-                style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: SahlhaSpacing.md),
-            ...first.map((kind) => Padding(
-                  padding:
-                      const EdgeInsets.only(bottom: SahlhaSpacing.sm),
-                  child: _HelpButton(
-                    kind: kind,
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      _showHelp(context, ref, kind);
-                    },
-                  ),
-                )),
-            if (!showMore)
-              TextButton(
-                onPressed: () => setSheet(() => showMore = true),
-                child: const Text('More ways to help'),
-              ),
-            if (showMore)
-              ...rest.map((kind) => Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: SahlhaSpacing.sm),
-                    child: _HelpButton(
-                      kind: kind,
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _showHelp(context, ref, kind);
-                      },
-                    ),
-                  )),
-          ],
-        ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('A picture for this skill', style: text.titleLarge),
+          const SizedBox(height: SahlhaSpacing.md),
+          SkillVisualCard(
+            skillId: skillId,
+            materialId: materialId,
+            classroomId: classroomId,
+            supplementary: supplementary,
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _showHelp(
-      BuildContext context, WidgetRef ref, String kind) async {
+    BuildContext context,
+    WidgetRef ref,
+    String kind, {
+    required bool hasImage,
+  }) async {
     if (kind == 'read_aloud') {
-      final url = ref.read(studentRepositoryProvider).skillAudioUrl(
-          skillId: skillId,
-          materialId: materialId,
-          classroomId: classroomId,
-          supplementary: supplementary);
+      final url = ref
+          .read(studentRepositoryProvider)
+          .skillAudioUrl(
+            skillId: skillId,
+            materialId: materialId,
+            classroomId: classroomId,
+            supplementary: supplementary,
+          );
       final err = await ref.read(audioServiceProvider).playUrl(url);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
             content: Text(err ?? 'Playing your lesson…'),
-            duration: const Duration(seconds: 2)));
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
+      return;
+    }
+    if (kind == 'visual') {
+      if (!context.mounted) return;
+      _showVisual(context, hasImage: hasImage);
       return;
     }
     if (!context.mounted) return;
     showSahlhaSheet<void>(
       context,
       FutureBuilder<SkillHelp>(
-        future: ref.read(studentRepositoryProvider).skillHelp(
-            skillId: skillId,
-            materialId: materialId,
-            kind: kind,
-            classroomId: classroomId,
-            supplementary: supplementary),
+        future: ref
+            .read(studentRepositoryProvider)
+            .skillHelp(
+              skillId: skillId,
+              materialId: materialId,
+              kind: kind,
+              classroomId: classroomId,
+              supplementary: supplementary,
+            ),
         builder: (ctx, snap) {
           final text = Theme.of(ctx).textTheme;
           if (snap.connectionState == ConnectionState.waiting) {
@@ -218,8 +211,10 @@ class SkillLessonScreen extends ConsumerWidget {
           if (snap.hasError || snap.data == null) {
             return Padding(
               padding: const EdgeInsets.all(8),
-              child: Text('Help is unavailable right now. Try again soon.',
-                  style: text.bodyMedium),
+              child: Text(
+                'Help is unavailable right now. Try again soon.',
+                style: text.bodyMedium,
+              ),
             );
           }
           final help = snap.data!;
@@ -227,35 +222,41 @@ class SkillLessonScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(help.title, style: text.titleLarge),
+              Text(cleanStudentText(help.title), style: text.titleLarge),
               const SizedBox(height: SahlhaSpacing.sm),
               if (help.steps.isNotEmpty)
-                ...help.steps.map((s) => Padding(
-                      padding: const EdgeInsets.only(
-                          bottom: SahlhaSpacing.sm),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.arrow_right,
-                              color: SahlhaColors.teal),
-                          Expanded(
-                              child: Text(s, style: text.bodyMedium)),
-                        ],
-                      ),
-                    )),
+                ...help.steps.map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.arrow_right, color: SahlhaColors.teal),
+                        Expanded(
+                          child: Text(
+                            cleanStudentText(s),
+                            style: text.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               if (help.steps.isEmpty)
-                Text(help.body, style: text.bodyLarge),
+                Text(cleanStudentText(help.body), style: text.bodyLarge),
               if (help.keyConcepts.isNotEmpty) ...[
                 const SizedBox(height: SahlhaSpacing.md),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: help.keyConcepts
-                      .map((c) => Chip(
-                            label: Text(c),
-                            backgroundColor: SahlhaColors.tealSoft,
-                            side: BorderSide.none,
-                          ))
+                      .map(
+                        (c) => Chip(
+                          label: Text(cleanStudentText(c)),
+                          backgroundColor: SahlhaColors.tealSoft,
+                          side: BorderSide.none,
+                        ),
+                      )
                       .toList(),
                 ),
               ],
@@ -267,80 +268,195 @@ class SkillLessonScreen extends ConsumerWidget {
   }
 }
 
-class _HelpButton extends StatelessWidget {
-  const _HelpButton({required this.kind, required this.onTap});
-
-  final String kind;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = switch (kind) {
-      'simpler' => 'Make it simpler',
-      'example' => 'Show an example',
-      'read_aloud' => 'Read aloud',
-      'steps' => 'Break into steps',
-      'visual' => 'Show visually',
-      'word' => 'Explain this word',
-      _ => kind,
-    };
-    final icon = switch (kind) {
-      'simpler' => Icons.simplify_outlined,
-      'example' => Icons.lightbulb_outline,
-      'read_aloud' => Icons.volume_up_outlined,
-      'steps' => Icons.format_list_numbered_outlined,
-      'visual' => Icons.image_outlined,
-      'word' => Icons.spellcheck_outlined,
-      _ => Icons.help_outline,
-    };
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon),
-      label: Align(alignment: Alignment.centerLeft, child: Text(label)),
-      style: OutlinedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          minimumSize: const Size.fromHeight(52)),
-    );
-  }
-}
-
-/// Authenticated image load (backend requires a bearer token).
-class _SkillImage extends ConsumerWidget {
-  const _SkillImage({
+class _LessonReading extends StatefulWidget {
+  const _LessonReading({
+    super.key,
+    required this.skill,
     required this.skillId,
     required this.materialId,
     this.classroomId,
     this.supplementary = false,
+    required this.help,
+    required this.showVisual,
+    required this.continueLearning,
   });
-
+  final SkillBundle skill;
   final String skillId;
   final String materialId;
   final String? classroomId;
   final bool supplementary;
+  final VoidCallback help, showVisual, continueLearning;
+  @override
+  State<_LessonReading> createState() => _LessonReadingState();
+}
+
+class _LessonReadingState extends State<_LessonReading> {
+  int _section = 0;
+  final _scroll = ScrollController();
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final url = ref.watch(studentRepositoryProvider).skillImageUrl(
-        skillId: skillId,
-        materialId: materialId,
-        classroomId: classroomId,
-        supplementary: supplementary);
-    return FutureBuilder<Response<List<int>>>(
-      future: ref.watch(apiClientProvider).dio.get<List<int>>(url,
-          options: Options(responseType: ResponseType.bytes)),
-      builder: (_, snap) {
-        if (snap.data?.data == null) return const SizedBox.shrink();
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.memory(
-            Uint8List.fromList(snap.data!.data!),
-            height: 180,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+  Widget build(BuildContext context) {
+    final skill = widget.skill;
+    final sections = lessonSections(
+      skill.explanation.isEmpty ? skill.description : skill.explanation,
+    );
+    final chunks = sections.isEmpty
+        ? [
+            'Your teacher is preparing this explanation. You can return to your path for another step.',
+          ]
+        : sections;
+    final index = _section.clamp(0, chunks.length - 1);
+    final last = index == chunks.length - 1;
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+      child: ListView(
+        controller: _scroll,
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Step ${skill.position} of ${skill.total < 1 ? 1 : skill.total}',
+                ),
+              ),
+              Text(
+                '${index + 1} / ${chunks.length}',
+                semanticsLabel:
+                    'Reading section ${index + 1} of ${chunks.length}',
+              ),
+            ],
           ),
-        );
-      },
+          const SizedBox(height: 12),
+          SahlhaProgressBar(value: (index + 1) / chunks.length),
+          const SizedBox(height: 24),
+          Text(
+            studentTitle(
+              skill.name,
+              context: '${skill.description} ${skill.explanation}',
+            ),
+            style: text.headlineMedium?.copyWith(
+              height: 1.2,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: SahlhaColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: SahlhaColors.borderSubtle),
+              boxShadow: SahlhaShadows.soft,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const LearningMark(size: 42),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: JourneyEyebrow(
+                        index == 0 ? 'THE IDEA' : 'A CLOSER LOOK',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  chunks[index],
+                  style: text.bodyLarge?.copyWith(
+                    height: 1.75,
+                    color: SahlhaColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ReadAloudButton(
+              key: ValueKey('audio:${widget.materialId}:${widget.skillId}'),
+              skillId: widget.skillId,
+              materialId: widget.materialId,
+              classroomId: widget.classroomId,
+              supplementary: widget.supplementary,
+            ),
+          ),
+          if (index == 0) ...[
+            const SizedBox(height: 18),
+            SkillVisualCard(
+              skillId: widget.skillId,
+              materialId: widget.materialId,
+              classroomId: widget.classroomId,
+              supplementary: widget.supplementary,
+            ),
+          ],
+          if (skill.keyConcepts.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                initiallyExpanded: true,
+                title: const Text('Key ideas'),
+                children: skill.keyConcepts
+                    .map(
+                      (idea) => ListTile(
+                        leading: const Icon(
+                          Icons.check_rounded,
+                          color: SahlhaColors.tealDark,
+                        ),
+                        title: Text(cleanStudentText(idea)),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: widget.help,
+            icon: const Icon(Icons.lightbulb_outline_rounded),
+            label: const Text('Help me'),
+          ),
+          const SizedBox(height: 12),
+          SahlhaPrimaryButton(
+            label: last
+                ? (skill.exerciseReady
+                      ? 'Continue to practice'
+                      : 'Back to my path')
+                : 'Continue',
+            onPressed: last
+                ? widget.continueLearning
+                : () {
+                    setState(() => _section++);
+                    _scroll.jumpTo(0);
+                  },
+          ),
+          if (index > 0)
+            TextButton(
+              onPressed: () {
+                setState(() => _section--);
+                _scroll.jumpTo(0);
+              },
+              child: const Text('Read the previous part'),
+            ),
+          if (last && !skill.exerciseReady)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'Practice will appear when it is ready.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

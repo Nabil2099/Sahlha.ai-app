@@ -4,7 +4,7 @@ part 'material.freezed.dart';
 part 'material.g.dart';
 
 @freezed
-class Material with _$Material {
+abstract class Material with _$Material {
   const factory Material({
     required String id,
     @Default('') String title,
@@ -28,22 +28,24 @@ class Material with _$Material {
 extension MaterialX on Material {
   bool get isSupplementary => scope == 'supplementary';
   bool get isProcessed =>
-      status == 'processed' || status == 'skills_ready' || status == 'banks_ready';
+      status == 'processed' ||
+      status == 'skills_ready' ||
+      status == 'banks_ready';
   bool get isFailed => status == 'failed';
 
   /// Student/parent-friendly processing label (no internal jargon).
   String get friendlyStatus => switch (status) {
-        'processing' => 'Reading your material…',
-        'processed' => 'Ready to find skills',
-        'skills_ready' => 'Skills ready',
-        'banks_ready' => 'Practice ready',
-        'failed' => 'Needs attention',
-        _ => 'Uploading…',
-      };
+    'processing' => 'Reading your material…',
+    'processed' => 'Ready to find skills',
+    'skills_ready' => 'Skills ready',
+    'banks_ready' => 'Practice ready',
+    'failed' => 'Needs attention',
+    _ => 'Uploading…',
+  };
 }
 
 @freezed
-class GeneratedSkill with _$GeneratedSkill {
+abstract class GeneratedSkill with _$GeneratedSkill {
   const factory GeneratedSkill({
     required String id,
     @JsonKey(name: 'skill_id') @Default('') String skillId,

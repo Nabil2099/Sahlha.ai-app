@@ -29,8 +29,9 @@ class _SupplementaryUploadScreenState
   void initState() {
     super.initState();
     _childId = widget.childId;
-    Future.microtask(
-        () => ref.read(uploadControllerProvider.notifier).reset());
+    Future.microtask(() {
+      if (mounted) ref.read(uploadControllerProvider.notifier).reset();
+    });
   }
 
   @override
@@ -47,14 +48,6 @@ class _SupplementaryUploadScreenState
     final children = ref.watch(linkedChildrenProvider);
 
     ref.listen(uploadControllerProvider, (prev, next) {
-      if (prev?.material == null && next.material != null) {
-        // Supplementary materials get skills automatically for study support.
-        controller.extractSkills(next.material!.id);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'Uploaded. Sahlha is preparing study support…')));
-        context.go('/parent/materials');
-      }
       if (next.error != null && next.error != prev?.error) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(next.error!)));
@@ -69,48 +62,56 @@ class _SupplementaryUploadScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Supplementary material',
-                  style: text.headlineSmall),
+              Text('Supplementary material', style: text.headlineSmall),
               const SizedBox(height: SahlhaSpacing.sm),
               Text(
                 'Upload worksheets or notes for your child. This supports their learning — it does not replace classroom material and never changes school grades.',
-                style:
-                    text.bodyMedium?.copyWith(color: SahlhaColors.muted),
+                style: text.bodyMedium?.copyWith(color: SahlhaColors.muted),
               ),
               const SizedBox(height: SahlhaSpacing.lg),
               children.when(
                 loading: () => const LoadingState(),
                 error: (e, _) => ErrorState(
-                    message: e.toString(),
-                    onRetry: () =>
-                        ref.invalidate(linkedChildrenProvider)),
+                  message: e.toString(),
+                  onRetry: () => ref.invalidate(linkedChildrenProvider),
+                ),
                 data: (list) {
                   if (list.isEmpty) {
                     return SahlhaSecondaryButton(
                       label: 'Link a child first',
-                      onPressed: () =>
-                          context.push('/parent/link'),
+                      onPressed: () => context.push('/parent/link'),
                     );
                   }
-                  _childId ??= list.first.id;
+                  if (!list.any((c) => c.id == _childId)) {
+                    _childId = list.first.id;
+                  }
                   return DropdownButtonFormField<String>(
                     initialValue: list.any((c) => c.id == _childId)
                         ? _childId
                         : list.first.id,
-                    decoration:
-                        const InputDecoration(labelText: 'Child'),
+                    decoration: const InputDecoration(labelText: 'Child'),
                     items: list
-                        .map((c) => DropdownMenuItem(
-                            value: c.id, child: Text(c.name)))
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name),
+                          ),
+                        )
                         .toList(),
-                    onChanged: (v) =>
-                        setState(() => _childId = v),
+                    onChanged: state.uploading || state.extracting
+                        ? null
+                        : (v) {
+                            controller.reset();
+                            setState(() => _childId = v);
+                          },
                   );
                 },
               ),
               const SizedBox(height: SahlhaSpacing.lg),
               InkWell(
-                onTap: state.picking ? null : controller.pickFile,
+                onTap: state.picking || state.uploading || state.extracting
+                    ? null
+                    : controller.pickFile,
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   padding: const EdgeInsets.all(SahlhaSpacing.xl),
@@ -118,7 +119,9 @@ class _SupplementaryUploadScreenState
                     color: SahlhaColors.tealFaint,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: SahlhaColors.tealSoft, width: 1.5),
+                      color: SahlhaColors.tealSoft,
+                      width: 1.5,
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -126,15 +129,21 @@ class _SupplementaryUploadScreenState
                         width: 64,
                         height: 64,
                         decoration: const BoxDecoration(
-                            color: SahlhaColors.teal,
-                            shape: BoxShape.circle),
-                        child: const Icon(Icons.add,
-                            color: Colors.white, size: 32),
+                          color: SahlhaColors.teal,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                       ),
                       const SizedBox(height: SahlhaSpacing.md),
-                      Text(state.fileName ?? 'Choose file',
-                          style: text.titleMedium,
-                          textAlign: TextAlign.center),
+                      Text(
+                        state.fileName ?? 'Choose file',
+                        style: text.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
                     ],
                   ),
                 ),
@@ -144,18 +153,42 @@ class _SupplementaryUploadScreenState
                 controller: _title,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                    labelText: 'Title (optional)'),
+                  labelText: 'Title (optional)',
+                ),
               ),
               const SizedBox(height: SahlhaSpacing.xl),
               SahlhaPrimaryButton(
                 label: 'Upload',
                 loading: state.uploading || state.extracting,
-                onPressed: state.filePath == null || _childId == null
+                onPressed:
+                    state.picking ||
+                        (state.filePath == null && state.fileBytes == null) ||
+                        _childId == null ||
+                        !(children.value?.any(
+                              (child) => child.id == _childId,
+                            ) ??
+                            false)
                     ? null
-                    : () => controller.upload(
-                          title: _title.text.trim(),
-                          childStudentId: _childId,
-                        ),
+                    : () async {
+                        if (ref.read(uploadControllerProvider).material ==
+                            null) {
+                          await controller.upload(
+                            title: _title.text.trim(),
+                            childStudentId: _childId,
+                          );
+                        }
+                        if (!mounted) return;
+                        final uploaded = ref
+                            .read(uploadControllerProvider)
+                            .material;
+                        if (uploaded == null) return;
+                        await controller.extractSkills(uploaded.id);
+                        if (!mounted) return;
+                        if (ref.read(uploadControllerProvider).error == null) {
+                          ref.invalidate(linkedChildrenProvider);
+                          if (context.mounted) context.go('/parent/materials');
+                        }
+                      },
               ),
             ],
           ),

@@ -19,19 +19,33 @@ abstract final class SahlhaTheme {
       scaffoldBackgroundColor: SahlhaColors.cream,
       textTheme: text.copyWith(
         displaySmall: text.displaySmall?.copyWith(
-            fontWeight: FontWeight.w800, color: SahlhaColors.ink),
+          fontWeight: FontWeight.w800,
+          color: SahlhaColors.ink,
+        ),
         headlineSmall: text.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w800, color: SahlhaColors.ink),
-        titleLarge: text.titleLarge
-            ?.copyWith(fontWeight: FontWeight.w800, color: SahlhaColors.ink),
-        titleMedium: text.titleMedium
-            ?.copyWith(fontWeight: FontWeight.w700, color: SahlhaColors.ink),
-        bodyLarge:
-            text.bodyLarge?.copyWith(color: SahlhaColors.ink, height: 1.55),
-        bodyMedium:
-            text.bodyMedium?.copyWith(color: SahlhaColors.ink, height: 1.55),
-        bodySmall: text.bodySmall
-            ?.copyWith(color: SahlhaColors.muted, height: 1.5),
+          fontWeight: FontWeight.w800,
+          color: SahlhaColors.ink,
+        ),
+        titleLarge: text.titleLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: SahlhaColors.ink,
+        ),
+        titleMedium: text.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: SahlhaColors.ink,
+        ),
+        bodyLarge: text.bodyLarge?.copyWith(
+          color: SahlhaColors.ink,
+          height: 1.55,
+        ),
+        bodyMedium: text.bodyMedium?.copyWith(
+          color: SahlhaColors.ink,
+          height: 1.55,
+        ),
+        bodySmall: text.bodySmall?.copyWith(
+          color: SahlhaColors.muted,
+          height: 1.5,
+        ),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: SahlhaColors.cream,
@@ -54,11 +68,10 @@ abstract final class SahlhaTheme {
           backgroundColor: SahlhaColors.teal,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(54),
-          textStyle:
-              const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           shape: const RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.all(Radius.circular(SahlhaRadius.lg))),
+            borderRadius: BorderRadius.all(Radius.circular(SahlhaRadius.lg)),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -66,36 +79,32 @@ abstract final class SahlhaTheme {
           foregroundColor: SahlhaColors.tealDark,
           minimumSize: const Size.fromHeight(54),
           side: const BorderSide(color: SahlhaColors.teal, width: 1.5),
-          textStyle:
-              const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           shape: const RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.all(Radius.circular(SahlhaRadius.lg))),
+            borderRadius: BorderRadius.all(Radius.circular(SahlhaRadius.lg)),
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-            foregroundColor: SahlhaColors.tealDark,
-            textStyle: const TextStyle(fontWeight: FontWeight.w800)),
+          foregroundColor: SahlhaColors.tealDark,
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        ),
       ),
-      inputDecorationTheme: InputDecorationTheme(
+      inputDecorationTheme: const InputDecorationTheme(
         filled: true,
         fillColor: SahlhaColors.surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        border: const OutlineInputBorder(
-          borderRadius:
-              BorderRadius.all(Radius.circular(SahlhaRadius.md)),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(SahlhaRadius.md)),
           borderSide: BorderSide(color: SahlhaColors.line),
         ),
-        enabledBorder: const OutlineInputBorder(
-          borderRadius:
-              BorderRadius.all(Radius.circular(SahlhaRadius.md)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(SahlhaRadius.md)),
           borderSide: BorderSide(color: SahlhaColors.line),
         ),
-        focusedBorder: const OutlineInputBorder(
-          borderRadius:
-              BorderRadius.all(Radius.circular(SahlhaRadius.md)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(SahlhaRadius.md)),
           borderSide: BorderSide(color: SahlhaColors.teal, width: 2),
         ),
       ),
@@ -103,14 +112,16 @@ abstract final class SahlhaTheme {
         backgroundColor: SahlhaColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-              top: Radius.circular(SahlhaRadius.lg)),
+            top: Radius.circular(SahlhaRadius.lg),
+          ),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: SahlhaColors.surface,
         indicatorColor: SahlhaColors.tealSoft,
         labelTextStyle: WidgetStatePropertyAll(
-            text.labelSmall?.copyWith(fontWeight: FontWeight.w700)),
+          text.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
       ),
       dividerColor: SahlhaColors.line,
     );

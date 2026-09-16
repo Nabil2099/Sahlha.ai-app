@@ -26,7 +26,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
     final auth = ref.read(authControllerProvider);
-    final user = auth.valueOrNull;
+    final user = auth.value;
     if (user == null) {
       context.go('/onboarding');
     } else {
@@ -45,12 +45,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             children: [
               const SahlhaLogo(size: 84),
               const SizedBox(height: SahlhaSpacing.xl),
-              Text('Same curriculum.',
-                  style: text.titleMedium
-                      ?.copyWith(color: SahlhaColors.muted)),
-              Text('Different path to mastery.',
-                  style: text.titleMedium
-                      ?.copyWith(color: SahlhaColors.muted)),
+              Text(
+                'Same curriculum.',
+                style: text.titleMedium?.copyWith(color: SahlhaColors.muted),
+              ),
+              Text(
+                'Different path to mastery.',
+                style: text.titleMedium?.copyWith(color: SahlhaColors.muted),
+              ),
             ],
           ),
         ),

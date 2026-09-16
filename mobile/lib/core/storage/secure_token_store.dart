@@ -11,10 +11,11 @@ class SecureTokenStore {
   static const _key = 'sahlha_auth_token';
 
   Future<String?> readToken() => _storage.read(key: _key);
-  Future<void> writeToken(String token) => _storage.write(key: _key, value: token);
+  Future<void> writeToken(String token) =>
+      _storage.write(key: _key, value: token);
   Future<void> clear() => _storage.delete(key: _key);
 }
 
 @riverpod
-SecureTokenStore secureTokenStore(SecureTokenStoreRef ref) =>
+SecureTokenStore secureTokenStore(Ref ref) =>
     SecureTokenStore(const FlutterSecureStorage());

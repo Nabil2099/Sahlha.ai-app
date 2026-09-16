@@ -4,7 +4,7 @@ part 'app_user.freezed.dart';
 part 'app_user.g.dart';
 
 @freezed
-class AppUser with _$AppUser {
+abstract class AppUser with _$AppUser {
   const factory AppUser({
     required String id,
     @Default('') String name,
@@ -23,8 +23,8 @@ extension AppUserX on AppUser {
   bool get isParent => role == 'parent';
 
   String get homeRoute => switch (role) {
-        'teacher' => '/teacher/home',
-        'parent' => '/parent/home',
-        _ => '/student/home',
-      };
+    'teacher' => '/teacher/home',
+    'parent' => '/parent/home',
+    _ => '/student/home',
+  };
 }

@@ -15,6 +15,7 @@ from sahlha.app.rag.ocr import extract_document_text
 def ingest_upload(db: Session, *, file_bytes: bytes, filename: str,
                   course_id: str = "general", lesson_id: str = "lesson_1",
                   skill_id: str = "general") -> dict:
+    filename = filename.replace("\\", "/").rsplit("/", 1)[-1] or "upload.txt"
     doc = repo.create_document(db, filename=filename, course_id=course_id,
                                lesson_id=lesson_id, skill_id=skill_id)
     os.makedirs(settings.upload_dir, exist_ok=True)

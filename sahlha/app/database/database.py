@@ -1,4 +1,6 @@
 """SQLAlchemy engine / session factory. Application owns all transactions."""
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -21,6 +23,12 @@ def get_db():
 
 def init_db() -> None:
     from sahlha.app.database import models  # noqa: F401  (register models)
+
+    # SQLite creates the database file, but not its parent directories.
+    if engine.dialect.name == "sqlite":
+        database = engine.url.database
+        if database and database != ":memory:" and not engine.url.query.get("uri"):
+            Path(database).parent.mkdir(parents=True, exist_ok=True)
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns()

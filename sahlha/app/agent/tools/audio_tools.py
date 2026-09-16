@@ -6,26 +6,73 @@ and cache the WAV on disk keyed by content hash. The LLM never touches audio byt
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import re
+import tempfile
 
 from sqlalchemy.orm import Session
 
 from sahlha.app.audio import tts
 from sahlha.app.database.repositories import repositories as repo
 
+logger = logging.getLogger(__name__)
+
+_VOICE_RE = re.compile(r"[^A-Za-z0-9 _-]")
+
+
+def sanitize_voice(voice: str | None) -> str | None:
+    """Keep the TTS voice a short, safe token (pure — unit tested).
+
+    The value is interpolated into the cache key and forwarded to the TTS
+    provider, so overlong/garbage input must never reach either. Returns
+    None when no usable voice was supplied (caller falls back to default).
+    """
+    if voice is None:
+        return None
+    cleaned = _VOICE_RE.sub("", voice.strip())[:64].strip()
+    return cleaned or None
+
 
 def _cached_or_synth(text: str, voice: str | None) -> tuple[str, str, bool]:
     from sahlha.app.config import settings
 
     os.makedirs(settings.audio_dir, exist_ok=True)
-    voice_used = voice or os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice)
+    voice_used = sanitize_voice(voice) or (os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice) or "").strip() or settings.groq_tts_voice
     digest = hashlib.sha1(f"{settings.groq_tts_model}|{voice_used}|{text}".encode()).hexdigest()[:16]
     path = os.path.join(settings.audio_dir, f"{digest}.wav")
     if os.path.exists(path):
         return path, voice_used, True
-    wav, voice_used = tts.synthesize(text, voice)
-    with open(path, "wb") as fh:
-        fh.write(wav)
+    try:
+        wav, voice_used = tts.synthesize(text, voice_used)
+    except ValueError:
+        raise
+    except RuntimeError as exc:
+        # Provider detail (model names, terms URLs, HTTP errors) is logged
+        # server-side only. Clients get a calm generic 503 so lessons never
+        # break and no provider internals leak to student devices.
+        logger.warning("TTS synthesis unavailable: %s", str(exc)[:300])
+        raise RuntimeError("Audio is unavailable right now.") from exc
+    except Exception as exc:  # never leak provider internals/secrets to clients
+        logger.warning("TTS synthesis failed: %s", type(exc).__name__)
+        raise RuntimeError("Audio is unavailable right now.") from exc
+    # Re-check after synthesis: a concurrent request for the same text may
+    # have populated the cache while we were calling the provider, in which
+    # case we reuse it instead of writing a duplicate file.
+    if os.path.exists(path):
+        return path, voice_used, True
+    # Atomic write so a concurrent reader never sees a half-written WAV.
+    fd, tmp_path = tempfile.mkstemp(dir=settings.audio_dir, suffix=".wav.part")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(wav)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return path, voice_used, False
 
 

@@ -7,12 +7,15 @@ The LLM never touches image bytes or API keys.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 
 from sqlalchemy.orm import Session
 
 from sahlha.app.database.repositories import repositories as repo
 from sahlha.app.images import pexels
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_skill_image(db: Session, *, course_id: str, lesson_id: str,
@@ -28,12 +31,31 @@ def fetch_skill_image(db: Session, *, course_id: str, lesson_id: str,
                 "alt": skill.image_alt, "cached": True}
     query = pexels.build_image_query({"name": skill.name, "skill_id": skill.skill_id,
                                       "key_concepts": skill.key_concepts or []})
-    found = pexels.fetch_related_image(query)
+    try:
+        found = pexels.fetch_related_image(query)
+    except (ValueError, RuntimeError):
+        raise
+    except Exception as exc:
+        # Network/provider failures must degrade to a calm 503, never a 500.
+        logger.warning("Image fetch failed: %s", type(exc).__name__)
+        raise RuntimeError("No picture is available right now.") from exc
     os.makedirs(settings.image_dir, exist_ok=True)
     digest = hashlib.sha1(found["bytes"]).hexdigest()[:16]
     path = os.path.join(settings.image_dir, f"{skill.skill_id[:60]}_{digest}.jpg".replace("/", "_"))
-    with open(path, "wb") as fh:
-        fh.write(found["bytes"])
+    # Atomic write so a concurrent reader never sees a half-written JPEG.
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(dir=settings.image_dir, suffix=".jpg.part")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(found["bytes"])
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     skill.image_url = found["page_url"]
     skill.image_path = path
     skill.image_alt = found["alt"]

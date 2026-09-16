@@ -5,7 +5,7 @@ part 'assessment_models.g.dart';
 
 /// Student-facing question. NEVER carries the correct answer.
 @freezed
-class PracticeQuestion with _$PracticeQuestion {
+abstract class PracticeQuestion with _$PracticeQuestion {
   const factory PracticeQuestion({
     required String id,
     @JsonKey(name: 'bank_id') @Default('') String bankId,
@@ -21,7 +21,7 @@ class PracticeQuestion with _$PracticeQuestion {
 }
 
 @freezed
-class AssessmentStart with _$AssessmentStart {
+abstract class AssessmentStart with _$AssessmentStart {
   const factory AssessmentStart({
     @JsonKey(name: 'assessment_id') @Default('') String assessmentId,
     @Default([]) List<PracticeQuestion> questions,
@@ -32,7 +32,7 @@ class AssessmentStart with _$AssessmentStart {
 }
 
 @freezed
-class QuestionResult with _$QuestionResult {
+abstract class QuestionResult with _$QuestionResult {
   const factory QuestionResult({
     @JsonKey(name: 'question_id') @Default('') String questionId,
     @Default(false) bool correct,
@@ -44,7 +44,7 @@ class QuestionResult with _$QuestionResult {
 }
 
 @freezed
-class AssessmentResult with _$AssessmentResult {
+abstract class AssessmentResult with _$AssessmentResult {
   const factory AssessmentResult({
     @JsonKey(name: 'assessment_id') @Default('') String assessmentId,
     @Default(0) double score,
@@ -61,7 +61,7 @@ class AssessmentResult with _$AssessmentResult {
 }
 
 @freezed
-class Grade with _$Grade {
+abstract class Grade with _$Grade {
   const factory Grade({
     required String id,
     @Default(0) double score,
@@ -71,12 +71,11 @@ class Grade with _$Grade {
     @JsonKey(name: 'skill_id') @Default('') String skillId,
   }) = _Grade;
 
-  factory Grade.fromJson(Map<String, dynamic> json) =>
-      _$GradeFromJson(json);
+  factory Grade.fromJson(Map<String, dynamic> json) => _$GradeFromJson(json);
 }
 
 @freezed
-class CheckResult with _$CheckResult {
+abstract class CheckResult with _$CheckResult {
   const factory CheckResult({
     @JsonKey(name: 'question_id') @Default('') String questionId,
     @Default(false) bool correct,

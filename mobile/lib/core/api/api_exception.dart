@@ -21,39 +21,52 @@ class ApiException implements Exception {
         case DioExceptionType.sendTimeout:
         case DioExceptionType.receiveTimeout:
           return const ApiException(
-              'The connection timed out. Check your internet and try again.');
+            'The connection timed out. Check your internet and try again.',
+          );
         case DioExceptionType.connectionError:
           return const ApiException(
-              'Could not reach Sahlha. Check your connection and try again.');
+            'Could not reach Sahlha. Check your connection and try again.',
+          );
         case DioExceptionType.badResponse:
           if (code == 401) {
             return ApiException(
-                detail ?? 'Your session expired. Please sign in again.',
-                statusCode: 401);
+              detail ?? 'Your session expired. Please sign in again.',
+              statusCode: 401,
+            );
           }
           if (code == 403) {
-            return ApiException(detail ?? 'You are not allowed to do that.',
-                statusCode: 403);
+            return ApiException(
+              detail ?? 'You are not allowed to do that.',
+              statusCode: 403,
+            );
           }
           if (code == 404) {
-            return ApiException(detail ?? 'This was not found.', statusCode: 404);
+            return ApiException(
+              detail ?? 'This was not found.',
+              statusCode: 404,
+            );
           }
           if (code == 422) {
             return ApiException(
-                detail ?? 'Some details need attention. Check and try again.',
-                statusCode: 422);
+              detail ?? 'Some details need attention. Check and try again.',
+              statusCode: 422,
+            );
           }
           if (code == 503) {
             return ApiException(
-                detail ?? 'This is unavailable right now. Try again later.',
-                statusCode: 503);
+              detail ?? 'This is unavailable right now. Try again later.',
+              statusCode: 503,
+            );
           }
           return ApiException(
-              detail ?? 'Something went wrong. Please try again.',
-              statusCode: code);
+            detail ?? 'Something went wrong. Please try again.',
+            statusCode: code,
+          );
         default:
-          return ApiException(detail ?? 'Something went wrong. Please try again.',
-              statusCode: code);
+          return ApiException(
+            detail ?? 'Something went wrong. Please try again.',
+            statusCode: code,
+          );
       }
     }
     return const ApiException('Something went wrong. Please try again.');

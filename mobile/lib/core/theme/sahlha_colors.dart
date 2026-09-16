@@ -1,11 +1,38 @@
 import 'package:flutter/material.dart';
 
-/// Sahlha design tokens — teal + cream + graphite + small warm accents.
-/// Follows the Sahlha UI reference (NOT botanical, NOT Duolingo).
+/// Sahlha design tokens — teal + warm off-white + graphite + small accents.
+///
+/// Canvas is a very light warm off-white; cards sit one tonal step above it
+/// so surfaces separate without heavy shadows. Follows the Sahlha UI
+/// reference (NOT botanical, NOT Duolingo).
 abstract final class SahlhaColors {
-  static const Color cream = Color(0xFFFFF8EE);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceWarm = Color(0xFFFFF3E2);
+  /// App canvas: very light warm off-white.
+  static const Color cream = Color(0xFFFBFAF7);
+
+  /// Primary card surface: warm white, one step above the canvas.
+  static const Color surface = Color(0xFFFFFEFC);
+
+  /// Warm accent surface for gentle highlights.
+  static const Color surfaceWarm = Color(0xFFFAF5EA);
+
+  // ---- Layered surface system (depth without heavy shadows) ----
+  /// The app background. Prefer over raw [cream] in new code.
+  static const Color backgroundPrimary = Color(0xFFFBFAF7);
+
+  /// Default card surface. Prefer over raw [surface] in new code.
+  static const Color surfacePrimary = Color(0xFFFFFEFC);
+
+  /// Slightly raised surface (headers, sheets, selected rows).
+  static const Color surfaceRaised = Color(0xFFFFFFFF);
+
+  /// Very pale teal for selected / active learning surfaces.
+  static const Color surfaceTealSoft = Color(0xFFEFFAF8);
+
+  /// Very pale warm yellow for gentle emphasis.
+  static const Color surfaceWarmAccent = Color(0xFFFEF6E4);
+
+  /// Soft warm-gray border for calm separation.
+  static const Color borderSubtle = Color(0xFFE7E1D4);
 
   static const Color teal = Color(0xFF0E9388);
   static const Color tealDark = Color(0xFF0B6E64);
@@ -14,7 +41,9 @@ abstract final class SahlhaColors {
 
   static const Color ink = Color(0xFF22313F);
   static const Color muted = Color(0xFF64748B);
-  static const Color line = Color(0xFFE9E1D3);
+
+  /// Default border color. Prefer [borderSubtle] in new code.
+  static const Color line = Color(0xFFE7E1D4);
 
   static const Color sun = Color(0xFFFBBF24);
   static const Color sunSoft = Color(0xFFFEF3C7);
@@ -47,4 +76,32 @@ abstract final class SahlhaColors {
       _ => const Color(0xFFF1F5F9),
     };
   }
+}
+
+/// Restrained elevation for the student experience: barely-there shadows
+/// that separate layers without any game-like floating.
+abstract final class SahlhaShadows {
+  static List<BoxShadow> get soft => [
+    BoxShadow(
+      color: SahlhaColors.ink.withValues(alpha: 0.05),
+      blurRadius: 14,
+      offset: const Offset(0, 5),
+    ),
+  ];
+
+  static List<BoxShadow> get lifted => [
+    BoxShadow(
+      color: SahlhaColors.tealDark.withValues(alpha: 0.12),
+      blurRadius: 18,
+      offset: const Offset(0, 7),
+    ),
+  ];
+
+  static List<BoxShadow> get pressed => [
+    BoxShadow(
+      color: SahlhaColors.ink.withValues(alpha: 0.03),
+      blurRadius: 6,
+      offset: const Offset(0, 2),
+    ),
+  ];
 }

@@ -4,7 +4,7 @@ part 'child_models.freezed.dart';
 part 'child_models.g.dart';
 
 @freezed
-class LinkedChild with _$LinkedChild {
+abstract class LinkedChild with _$LinkedChild {
   const factory LinkedChild({
     required String id,
     @Default('') String name,
@@ -16,7 +16,7 @@ class LinkedChild with _$LinkedChild {
 }
 
 @freezed
-class ChildClassroom with _$ChildClassroom {
+abstract class ChildClassroom with _$ChildClassroom {
   const factory ChildClassroom({
     required String id,
     @Default('') String name,

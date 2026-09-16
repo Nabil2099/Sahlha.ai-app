@@ -67,9 +67,15 @@ def process_material(db: Session, mat: m.LearningMaterial, file_bytes: bytes) ->
             db, file_bytes=file_bytes, filename=mat.original_filename or "upload",
             course_id=course_id, lesson_id=lesson_id, skill_id="general")
     except Exception as exc:
+        db.rollback()
         prepo.set_material_status(db, mat, "failed", f"Could not read this file: {exc}")
         raise ValueError(f"Could not read this file: {exc}")
     if result.get("chunk_count", 0) == 0:
+        method = str(result.get("method", ""))
+        if method.startswith(("ocr:unavailable", "ocr:failed")):
+            message = "This scan needs text recognition (OCR), which is unavailable or timed out. Try a searchable PDF or a smaller scan."
+            prepo.set_material_status(db, mat, "failed", message)
+            raise ValueError(message)
         prepo.set_material_status(db, mat, "failed",
                                   "No readable text was found. The file may be empty or unsupported.")
         raise ValueError("No readable text was found. The file may be empty or unsupported.")
@@ -258,7 +264,8 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
         db, student_id, course_id=course_id, lesson_id=lesson_id)}
     # Legacy fallback: unscoped rows (older data without course/lesson).
     if not perf_rows:
-        perf_rows = {p.skill_id: p for p in repo.get_skill_performance(db, student_id)}
+        perf_rows = {p.skill_id: p for p in repo.get_skill_performance(db, student_id)
+                     if not p.course_id and not p.lesson_id}
     out = []
     for row in repo.list_skills(db, course_id=course_id, lesson_id=lesson_id):
         atts = per_skill.get(row.skill_id, [])
@@ -497,7 +504,10 @@ def submit_platform_assessment(db: Session, *, student: m.User, assessment_id: s
     elif out.get("score", 0) is not None and float(out.get("score") or 0) >= 0.8:
         profiles.record_support_signal(db, student.id, "improved")
     for sig in support_signals or []:
-        profiles.record_support_signal(db, student.id, sig)
+        # Filter defensively: grading/results must never break because of a
+        # stray signal value (the dedicated endpoint validates strictly).
+        if sig in profiles.KNOWN_SIGNALS:
+            profiles.record_support_signal(db, student.id, sig)
     # Attach friendly mastery states for the touched skills.
     states: dict[str, str] = {}
     for row in repo.get_skill_performance(db, student.id):

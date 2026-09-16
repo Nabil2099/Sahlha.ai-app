@@ -5,6 +5,7 @@ Provider can be swapped later; rest of the app only depends on this interface.
 from __future__ import annotations
 
 import io
+import time
 from dataclasses import dataclass
 
 
@@ -33,7 +34,25 @@ def _extract_docx(data: bytes) -> str:
     import docx
 
     doc = docx.Document(io.BytesIO(data))
-    return "\n".join(p.text for p in doc.paragraphs)
+    parts = [p.text for p in doc.paragraphs]
+    parts.extend("\t".join(cell.text for cell in row.cells)
+                 for table in doc.tables for row in table.rows)
+    return "\n".join(parts)
+
+
+def _extract_pptx(data: bytes) -> str:
+    from pptx import Presentation
+
+    presentation = Presentation(io.BytesIO(data))
+    parts: list[str] = []
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                parts.append(shape.text)
+            if shape.has_table:
+                parts.extend("\t".join(cell.text for cell in row.cells)
+                             for row in shape.table.rows)
+    return "\n".join(parts)
 
 
 def _try_ocr_images(data: bytes, suffix: str) -> tuple[str, str]:
@@ -46,14 +65,30 @@ def _try_ocr_images(data: bytes, suffix: str) -> tuple[str, str]:
     try:
         if suffix == ".pdf":
             try:
-                from pdf2image import convert_from_bytes
+                from pdf2image import convert_from_bytes, pdfinfo_from_bytes
             except ImportError:
                 return "", "ocr:unavailable (pdf2image not installed)"
-            images = convert_from_bytes(data, dpi=200)
-            texts = [pytesseract.image_to_string(img) for img in images]
+            deadline = time.monotonic() + 45
+            pages = int(pdfinfo_from_bytes(data, timeout=10)["Pages"])
+            texts = []
+            for page in range(1, pages + 1):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("OCR exceeded 45 seconds; try a smaller scan")
+                images = convert_from_bytes(data, dpi=150, first_page=page,
+                                            last_page=page, timeout=remaining)
+                try:
+                    for image in images:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("OCR exceeded 45 seconds; try a smaller scan")
+                        texts.append(pytesseract.image_to_string(image, timeout=remaining))
+                finally:
+                    for image in images:
+                        image.close()
             return "\n".join(texts), "ocr:tesseract(pdf2image)"
-        image = Image.open(io.BytesIO(data))
-        return pytesseract.image_to_string(image), "ocr:tesseract"
+        with Image.open(io.BytesIO(data)) as image:
+            return pytesseract.image_to_string(image, timeout=45), "ocr:tesseract"
     except Exception as exc:  # OCR is best-effort; never crash ingestion
         return "", f"ocr:failed ({exc})"
 
@@ -62,7 +97,7 @@ def extract_document_text(file_bytes: bytes, filename: str) -> ExtractedDocument
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if suffix == ".pdf":
         text, pages = _extract_pdf_native(file_bytes)
-        if text.strip() and len(text.strip()) >= 50:
+        if text.strip():
             return ExtractedDocument(text=text.strip(), num_pages=pages, is_scanned=False, method="pypdf")
         ocr_text, method = _try_ocr_images(file_bytes, ".pdf")
         if ocr_text.strip():

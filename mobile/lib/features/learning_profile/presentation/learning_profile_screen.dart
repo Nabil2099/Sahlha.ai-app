@@ -18,8 +18,7 @@ class LearningProfileScreen extends ConsumerStatefulWidget {
       _LearningProfileScreenState();
 }
 
-class _LearningProfileScreenState
-    extends ConsumerState<LearningProfileScreen> {
+class _LearningProfileScreenState extends ConsumerState<LearningProfileScreen> {
   int _index = 0;
   final Map<String, String> _answers = {};
   bool _saving = false;
@@ -60,9 +59,10 @@ class _LearningProfileScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Question ${_index + 1} of $total',
-                    style: text.bodySmall
-                        ?.copyWith(color: SahlhaColors.muted)),
+                Text(
+                  'Question ${_index + 1} of $total',
+                  style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
+                ),
                 const SizedBox(height: SahlhaSpacing.sm),
                 SahlhaProgressBar(value: (_index + 1) / total),
                 const SizedBox(height: SahlhaSpacing.xl),
@@ -70,15 +70,13 @@ class _LearningProfileScreenState
                 const SizedBox(height: SahlhaSpacing.sm),
                 Text(
                   'There are no wrong answers. This helps Sahlha support you.',
-                  style:
-                      text.bodyMedium?.copyWith(color: SahlhaColors.muted),
+                  style: text.bodyMedium?.copyWith(color: SahlhaColors.muted),
                 ),
                 const SizedBox(height: SahlhaSpacing.xl),
                 ...step.options.map((opt) {
                   final selected = _answers[step.key] == opt.value;
                   return Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: SahlhaSpacing.sm),
+                    padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
                     child: QuestionOptionCard(
                       label: opt.label,
                       selected: selected,
@@ -97,8 +95,7 @@ class _LearningProfileScreenState
                           onPressed: () => setState(() => _index--),
                         ),
                       ),
-                    if (_index > 0)
-                      const SizedBox(width: SahlhaSpacing.md),
+                    if (_index > 0) const SizedBox(width: SahlhaSpacing.md),
                     Expanded(
                       flex: 2,
                       child: SahlhaPrimaryButton(

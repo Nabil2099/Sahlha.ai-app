@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.orm import Session
 
 from sahlha.app.auth import deps
+from sahlha.app.config import settings
 from sahlha.app.database import models as m
 from sahlha.app.database.database import get_db
 from sahlha.app.database.repositories import platform as prepo
@@ -50,14 +51,15 @@ def _get_visible(material_id: str, user: m.User, db: Session) -> m.LearningMater
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
-async def upload_material(title: str = Form(""), classroom_id: str | None = Form(None),
+def upload_material(title: str = Form(""), classroom_id: str | None = Form(None),
                           child_student_id: str | None = Form(None),
                           file: UploadFile = File(...),
                           user: m.User = Depends(deps.current_user),
                           db: Session = Depends(get_db)):
     if user.role not in ("teacher", "parent"):
         raise HTTPException(403, "Only teachers and parents can upload materials")
-    data = await file.read()
+    # Run blocking document processing in FastAPI's worker thread, and bound reads.
+    data = file.file.read(settings.max_upload_mb * 1024 * 1024 + 1)
     try:
         plat.validate_upload(file.filename or "upload", len(data))
     except ValueError as exc:

@@ -5,7 +5,7 @@ part 'bank_models.g.dart';
 
 /// Teacher-facing question (correct answer visible — teachers are authorized).
 @freezed
-class BankQuestion with _$BankQuestion {
+abstract class BankQuestion with _$BankQuestion {
   const factory BankQuestion({
     required String id,
     @JsonKey(name: 'skill_id') @Default('') String skillId,
@@ -33,7 +33,7 @@ extension BankQuestionX on BankQuestion {
 }
 
 @freezed
-class BankSummary with _$BankSummary {
+abstract class BankSummary with _$BankSummary {
   const factory BankSummary({
     String? id,
     @JsonKey(name: 'skill_id') @Default('') String skillId,
@@ -54,14 +54,14 @@ extension BankSummaryX on BankSummary {
   bool get isApproved => status == 'approved';
 
   String get statusLabel => switch (status) {
-        'approved' => 'Approved',
-        'rejected' => 'Rejected',
-        _ => 'Pending review',
-      };
+    'approved' => 'Approved',
+    'rejected' => 'Rejected',
+    _ => 'Pending review',
+  };
 }
 
 @freezed
-class BankDetail with _$BankDetail {
+abstract class BankDetail with _$BankDetail {
   const factory BankDetail({
     required String id,
     @JsonKey(name: 'skill_id') @Default('') String skillId,

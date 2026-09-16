@@ -4,7 +4,7 @@ part 'skill_models.freezed.dart';
 part 'skill_models.g.dart';
 
 @freezed
-class PathSkill with _$PathSkill {
+abstract class PathSkill with _$PathSkill {
   const factory PathSkill({
     required String id,
     @JsonKey(name: 'skill_id') @Default('') String skillId,
@@ -23,7 +23,7 @@ class PathSkill with _$PathSkill {
 }
 
 @freezed
-class PathUnit with _$PathUnit {
+abstract class PathUnit with _$PathUnit {
   const factory PathUnit({
     @JsonKey(name: 'material_id') @Default('') String materialId,
     @Default('') String title,
@@ -36,7 +36,7 @@ class PathUnit with _$PathUnit {
 }
 
 @freezed
-class SkillBundle with _$SkillBundle {
+abstract class SkillBundle with _$SkillBundle {
   const factory SkillBundle({
     @JsonKey(name: 'skill_id') @Default('') String skillId,
     @Default('') String name,
@@ -58,7 +58,7 @@ class SkillBundle with _$SkillBundle {
 }
 
 @freezed
-class SkillHelp with _$SkillHelp {
+abstract class SkillHelp with _$SkillHelp {
   const factory SkillHelp({
     @Default('') String kind,
     @Default('') String title,

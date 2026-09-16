@@ -13,8 +13,14 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _pages = const PageController();
+  final _pages = PageController();
   int _index = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
 
   static const _slides = [
     (
@@ -44,8 +50,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: Column(
             children: [
               const Align(
-                  alignment: Alignment.centerLeft,
-                  child: SahlhaLogo(size: 40)),
+                alignment: Alignment.centerLeft,
+                child: SahlhaLogo(size: 40),
+              ),
               Expanded(
                 child: PageView.builder(
                   controller: _pages,
@@ -60,20 +67,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           width: 120,
                           height: 120,
                           decoration: const BoxDecoration(
-                              color: SahlhaColors.tealSoft,
-                              shape: BoxShape.circle),
-                          child: Icon(slide.icon,
-                              size: 56, color: SahlhaColors.teal),
+                            color: SahlhaColors.tealSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            slide.icon,
+                            size: 56,
+                            color: SahlhaColors.teal,
+                          ),
                         ),
                         const SizedBox(height: SahlhaSpacing.xxl),
-                        Text(slide.title,
-                            style: text.headlineSmall,
-                            textAlign: TextAlign.center),
+                        Text(
+                          slide.title,
+                          style: text.headlineSmall,
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: SahlhaSpacing.md),
-                        Text(slide.body,
-                            style: text.bodyLarge
-                                ?.copyWith(color: SahlhaColors.muted),
-                            textAlign: TextAlign.center),
+                        Text(
+                          slide.body,
+                          style: text.bodyLarge?.copyWith(
+                            color: SahlhaColors.muted,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                     );
                   },
@@ -104,8 +120,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     context.go('/role');
                   } else {
                     _pages.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut);
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
                   }
                 },
               ),

@@ -14,9 +14,9 @@ PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 def pexels_available() -> bool:
     try:
         from sahlha.app.config import settings
-        key = settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")
+        key = (settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")).strip()
     except Exception:
-        key = os.getenv("PEXELS_API_KEY", "")
+        key = os.getenv("PEXELS_API_KEY", "").strip()
     return bool(key)
 
 
@@ -31,7 +31,9 @@ def build_image_query(skill: dict) -> str:
 def _api_key() -> str:
     from sahlha.app.config import settings
 
-    key = settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")
+    # Strip defensively: `.env` values like `PEXELS_API_KEY= <key>` must not
+    # fail auth because of surrounding whitespace. The key is never logged.
+    key = (settings.pexels_api_key or os.getenv("PEXELS_API_KEY", "")).strip()
     if not key:
         raise RuntimeError("Image search needs PEXELS_API_KEY in the backend .env.")
     return key

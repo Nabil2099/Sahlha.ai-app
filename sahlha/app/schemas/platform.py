@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 Role = Literal["teacher", "student", "parent"]
 
@@ -100,6 +100,16 @@ class LearningProfileRequest(BaseModel):
 
 class SupportSignalRequest(BaseModel):
     signal: str
+
+    @field_validator("signal")
+    @classmethod
+    def _known_signal(cls, value: str) -> str:
+        from sahlha.app.services.profiles import KNOWN_SIGNALS
+
+        cleaned = (value or "").strip()
+        if cleaned not in KNOWN_SIGNALS:
+            raise ValueError(f"Unknown support signal: {cleaned[:64]!r}")
+        return cleaned
 
 
 class StartPlatformAssessmentRequest(BaseModel):

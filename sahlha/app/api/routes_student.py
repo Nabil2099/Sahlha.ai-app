@@ -1,6 +1,9 @@
 """Student platform APIs: profile, learning path, skills, help, assessment, grades."""
 from __future__ import annotations
 
+import logging
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -16,6 +19,8 @@ from sahlha.app.services import mapping
 from sahlha.app.services import platform as plat
 from sahlha.app.services import profiles
 from sahlha.app.services import services as legacy
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/student", tags=["student"])
 
@@ -206,6 +211,20 @@ def progress(classroom_id: str | None = None,
 
 
 # ---- Audio / images (scoped; graceful 503/404 when unavailable) ----
+# These endpoints stay behind `require_student` (JWT + RBAC): protected media
+# must never become public, and API keys always stay server-side — Flutter
+# only ever receives WAV/JPEG bytes, never provider credentials.
+AUDIO_UNAVAILABLE = "Audio is unavailable right now."
+IMAGE_UNAVAILABLE = "No picture is available right now."
+
+
+def _media_file(path: str, *, unavailable: str) -> str:
+    """Guard cached media paths: a missing file degrades to 503, never 500."""
+    if not path or not os.path.exists(path):
+        raise HTTPException(503, unavailable)
+    return path
+
+
 @router.get("/skills/{skill_id}/audio")
 def skill_audio(skill_id: str, material_id: str, classroom_id: str | None = None,
                 supplementary: bool = False, voice: str | None = None,
@@ -218,8 +237,14 @@ def skill_audio(skill_id: str, material_id: str, classroom_id: str | None = None
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     except RuntimeError as exc:
-        raise HTTPException(503, str(exc))
-    return FileResponse(result["path"], media_type="audio/wav", filename=f"{skill_id}.wav")
+        # 503 = TTS provider unavailable (no key, terms not accepted, outage).
+        # Distinct from 401 (auth) — the client shows one calm line either way
+        # and the lesson always continues. Detail stays in server logs.
+        logger.warning("skill audio unavailable for %s/%s: %s", course_id, lesson_id,
+                       str(exc)[:200])
+        raise HTTPException(503, AUDIO_UNAVAILABLE)
+    path = _media_file(result["path"], unavailable=AUDIO_UNAVAILABLE)
+    return FileResponse(path, media_type="audio/wav", filename=f"{skill_id}.wav")
 
 
 @router.get("/skills/{skill_id}/image")
@@ -234,5 +259,8 @@ def skill_image(skill_id: str, material_id: str, classroom_id: str | None = None
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     except RuntimeError as exc:
-        raise HTTPException(503, str(exc))
-    return FileResponse(result["path"], media_type="image/jpeg", filename=f"{skill_id}.jpg")
+        logger.warning("skill image unavailable for %s/%s: %s", course_id, lesson_id,
+                       str(exc)[:200])
+        raise HTTPException(503, IMAGE_UNAVAILABLE)
+    path = _media_file(result["path"], unavailable=IMAGE_UNAVAILABLE)
+    return FileResponse(path, media_type="image/jpeg", filename=f"{skill_id}.jpg")

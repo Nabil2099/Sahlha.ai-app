@@ -4,7 +4,7 @@ part 'classroom.freezed.dart';
 part 'classroom.g.dart';
 
 @freezed
-class Classroom with _$Classroom {
+abstract class Classroom with _$Classroom {
   const factory Classroom({
     required String id,
     @JsonKey(name: 'teacher_id') @Default('') String teacherId,
@@ -20,7 +20,7 @@ class Classroom with _$Classroom {
 }
 
 @freezed
-class ClassroomStudent with _$ClassroomStudent {
+abstract class ClassroomStudent with _$ClassroomStudent {
   const factory ClassroomStudent({
     required String id,
     @Default('') String name,

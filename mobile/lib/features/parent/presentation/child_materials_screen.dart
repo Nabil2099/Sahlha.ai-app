@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Material;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,8 +24,9 @@ class ChildMaterialsScreen extends ConsumerWidget {
       body: children.when(
         loading: () => const LoadingState(),
         error: (e, _) => ErrorState(
-            message: e.toString(),
-            onRetry: () => ref.invalidate(linkedChildrenProvider)),
+          message: e.toString(),
+          onRetry: () => ref.invalidate(linkedChildrenProvider),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return EmptyState(
@@ -48,83 +49,82 @@ class ChildMaterialsScreen extends ConsumerWidget {
                   initialValue: list.any((c) => c.id == id)
                       ? id
                       : list.first.id,
-                  decoration:
-                      const InputDecoration(labelText: 'Child'),
+                  decoration: const InputDecoration(labelText: 'Child'),
                   items: list
-                      .map((c) => DropdownMenuItem(
-                          value: c.id, child: Text(c.name)))
+                      .map(
+                        (c) =>
+                            DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      )
                       .toList(),
-                  onChanged: (v) => ref
-                      .read(selectedChildProvider.notifier)
-                      .select(v),
+                  onChanged: (v) =>
+                      ref.read(selectedChildProvider.notifier).select(v),
                 ),
               ),
               Expanded(
                 child: mats.when(
                   loading: () => const LoadingState(),
                   error: (e, _) => ErrorState(
-                      message: e.toString(),
-                      onRetry: () =>
-                          ref.invalidate(_matsProvider(id))),
+                    message: e.toString(),
+                    onRetry: () => ref.invalidate(_matsProvider(id)),
+                  ),
                   data: (materials) => ListView(
-                    padding:
-                        const EdgeInsets.all(SahlhaSpacing.page),
+                    padding: const EdgeInsets.all(SahlhaSpacing.page),
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(
-                            SahlhaSpacing.md),
+                        padding: const EdgeInsets.all(SahlhaSpacing.md),
                         decoration: BoxDecoration(
                           color: SahlhaColors.tealFaint,
-                          borderRadius:
-                              BorderRadius.circular(14),
-                          border: Border.all(
-                              color: SahlhaColors.tealSoft),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: SahlhaColors.tealSoft),
                         ),
                         child: Text(
                           'Supplementary material supports your child’s learning. It does not replace classroom material.',
                           style: text.bodySmall?.copyWith(
-                              color: SahlhaColors.tealDark),
+                            color: SahlhaColors.tealDark,
+                          ),
                         ),
                       ),
                       const SizedBox(height: SahlhaSpacing.md),
                       SahlhaPrimaryButton(
                         label: 'Upload supplementary material',
-                        onPressed: () => context.push(
-                            '/parent/upload?childId=$id'),
+                        onPressed: () =>
+                            context.push('/parent/upload?childId=$id'),
                       ),
                       const SizedBox(height: SahlhaSpacing.lg),
                       if (materials.isEmpty)
                         const EmptyState(
                           title: 'No supplementary material',
-                          message:
-                              'Upload worksheets or notes and Sahlha will turn them into extra support.',
+                          message: 'Upload worksheets or notes and Sahlha will turn them into extra support.',
                         )
                       else
-                        ...materials.map((m) => Padding(
-                              padding: const EdgeInsets.only(
-                                  bottom: SahlhaSpacing.sm),
-                              child: SahlhaCard(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(m.title,
-                                        style: text.titleMedium),
-                                    Text(m.filename,
-                                        style: text.bodySmall
-                                            ?.copyWith(
-                                                color: SahlhaColors
-                                                    .muted)),
-                                    const SizedBox(height: 4),
-                                    Text(m.friendlyStatus,
-                                        style: text.bodySmall
-                                            ?.copyWith(
-                                                color: SahlhaColors
-                                                    .tealDark)),
-                                  ],
-                                ),
+                        ...materials.map(
+                          (m) => Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: SahlhaSpacing.sm,
+                            ),
+                            child: SahlhaCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(m.title, style: text.titleMedium),
+                                  Text(
+                                    m.filename,
+                                    style: text.bodySmall?.copyWith(
+                                      color: SahlhaColors.muted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    m.friendlyStatus,
+                                    style: text.bodySmall?.copyWith(
+                                      color: SahlhaColors.tealDark,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            )),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -137,7 +137,8 @@ class ChildMaterialsScreen extends ConsumerWidget {
   }
 }
 
-final _matsProvider = FutureProvider.autoDispose
-    .family<List<Material>, String>((ref, id) {
-  return ref.watch(parentRepositoryProvider).childMaterials(id);
-});
+final _matsProvider = FutureProvider.autoDispose.family<List<Material>, String>(
+  (ref, id) {
+    return ref.watch(parentRepositoryProvider).childMaterials(id);
+  },
+);

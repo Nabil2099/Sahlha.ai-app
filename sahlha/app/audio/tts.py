@@ -14,9 +14,9 @@ import wave
 def tts_available() -> bool:
     try:
         from sahlha.app.config import settings
-        key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
+        key = (settings.groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
     except Exception:
-        key = os.getenv("GROQ_API_KEY", "")
+        key = os.getenv("GROQ_API_KEY", "").strip()
     return bool(key)
 
 
@@ -80,14 +80,16 @@ def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
     text = (text or "").strip()
     if not text:
         raise ValueError("Nothing to synthesize: empty text")
-    api_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
+    # Strip defensively: `.env` values like `GROQ_API_KEY= <key>` must not fail
+    # auth because of surrounding whitespace. The key itself is never logged.
+    api_key = (settings.groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
     if not api_key:
         raise RuntimeError("Groq TTS needs GROQ_API_KEY (and accepted PlayAI model terms).")
     try:
         from groq import Groq  # noqa: F401
     except ImportError as exc:
         raise RuntimeError("Groq TTS needs the 'groq' package (pip install groq).") from exc
-    voice = voice or os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice)
+    voice = (voice or os.getenv("GROQ_TTS_VOICE", settings.groq_tts_voice) or "").strip() or settings.groq_tts_voice
     chunks = split_for_tts(text, settings.groq_tts_max_chars)
     try:
         wavs = [_synthesize_chunk(c, api_key=api_key, model=settings.groq_tts_model, voice=voice)

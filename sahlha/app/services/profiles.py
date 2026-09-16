@@ -11,6 +11,14 @@ from sqlalchemy.orm import Session
 from sahlha.app.database import models as m
 from sahlha.app.database.repositories import platform as prepo
 
+# Signals the client may report. Unknown values are rejected at the schema
+# layer (422) so duplicate/garbage traffic can never create junk profile rows.
+KNOWN_SIGNALS = frozenset({
+    "hint_used", "retry", "example_helped", "simpler_helped", "audio_used",
+    "visual_helped", "step_helped", "struggled", "improved",
+})
+
+
 # ---- Onboarding answer -> support mapping (support language only, never medical) ----
 READING = {"easy": "standard_text", "sometimes": "larger_text_breaks", "hard": "short_chunks_audio"}
 FOCUS = {"long": "standard_sessions", "medium": "short_steps_checkins", "short": "one_task_short"}
@@ -87,7 +95,16 @@ def record_support_signal(db: Session, student_id: str, signal: str) -> m.Studen
 
     Signals: hint_used, retry, example_helped, simpler_helped, audio_used,
     visual_helped, step_helped, struggled (3+ wrong in a row), improved.
+    Unknown signals are ignored (defensive: the assessment-submit path must
+    never fail grading because of a stray signal value).
     """
+    signal = (signal or "").strip()
+    if signal not in KNOWN_SIGNALS:
+        prof = prepo.get_profile(db, student_id)
+        if prof is None:
+            # Do not create junk profile rows for unknown signals.
+            raise ValueError(f"Unknown support signal: {signal[:64]!r}")
+        return prof
     prof = prepo.get_profile(db, student_id)
     observed = dict((prof.observed_settings or {})) if prof else {}
     if signal == "hint_used":

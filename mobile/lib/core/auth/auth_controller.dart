@@ -29,10 +29,9 @@ class AuthController extends _$AuthController {
   Future<void> login({required String email, required String password}) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final result = await ref.read(authRepositoryProvider).login(
-            email: email,
-            password: password,
-          );
+      final result = await ref
+          .read(authRepositoryProvider)
+          .login(email: email, password: password);
       await ref.read(secureTokenStoreProvider).writeToken(result.token);
       ref.read(apiClientProvider).setToken(result.token);
       return result.user;
@@ -47,12 +46,9 @@ class AuthController extends _$AuthController {
   }) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final result = await ref.read(authRepositoryProvider).register(
-            name: name,
-            email: email,
-            password: password,
-            role: role,
-          );
+      final result = await ref
+          .read(authRepositoryProvider)
+          .register(name: name, email: email, password: password, role: role);
       await ref.read(secureTokenStoreProvider).writeToken(result.token);
       ref.read(apiClientProvider).setToken(result.token);
       return result.user;
@@ -73,13 +69,11 @@ class AuthController extends _$AuthController {
   }
 
   Future<void> updateName(String name) async {
-    final updated =
-        await ref.read(authRepositoryProvider).updateName(name);
+    final updated = await ref.read(authRepositoryProvider).updateName(name);
     state = AsyncData(updated);
   }
 }
 
 /// Convenience: the signed-in user (null when signed out).
 @riverpod
-AppUser? currentUser(CurrentUserRef ref) =>
-    ref.watch(authControllerProvider).valueOrNull;
+AppUser? currentUser(Ref ref) => ref.watch(authControllerProvider).value;

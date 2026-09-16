@@ -4,34 +4,31 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/theme/sahlha_colors.dart';
-import '../../../core/theme/sahlha_spacing.dart';
-import '../../../core/widgets/sahlha_widgets.dart';
-import '../../learning_profile/data/learning_profile_repository.dart';
+import '../../../core/widgets/sahlha_widgets.dart'
+    show EmptyState, ErrorState, SahlhaPrimaryButton;
 import '../data/student_repository.dart';
+import 'journey_presentation.dart';
+import 'widgets/learning_journey.dart';
 
-/// Student Home answers ONE question: "What should I do next?"
 class StudentHomeScreen extends ConsumerWidget {
   const StudentHomeScreen({super.key});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
     final user = ref.watch(currentUserProvider);
     final home = ref.watch(studentHomeProvider);
-    final profile = ref.watch(learningProfileProvider);
-
+    final name = cleanStudentText(user?.name ?? '').split(' ').first;
     return Scaffold(
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(studentHomeProvider);
-            await ref.read(studentHomeProvider.future);
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(SahlhaSpacing.page),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: StudentCanvas(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(studentHomeProvider);
+              ref.invalidate(studentLearningPathProvider);
+              await ref.read(studentHomeProvider.future);
+            },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 Row(
                   children: [
@@ -39,53 +36,34 @@ class StudentHomeScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Good day,',
-                              style: text.bodyMedium?.copyWith(
-                                  color: SahlhaColors.muted)),
-                          Text(user?.name.isNotEmpty == true
-                                  ? '${user!.name.split(' ').first}!'
-                                  : 'Learner!',
-                              style: text.headlineSmall),
+                          const JourneyEyebrow('ONE STEP AT A TIME'),
+                          const SizedBox(height: 10),
+                          Text(
+                            name.isEmpty ? 'Hello, learner.' : 'Hello, $name.',
+                            style: Theme.of(context).textTheme.headlineMedium,
+                          ),
                         ],
                       ),
                     ),
-                    const SahlhaLogo(size: 36, showWordmark: false),
+                    const SizedBox(width: 8),
+                    const LearningMark(size: 52),
                   ],
                 ),
-                const SizedBox(height: SahlhaSpacing.lg),
-                // Gentle nudge to finish the learning profile.
-                profile.whenOrNull(
-                      data: (p) => !p.onboardingCompleted
-                          ? SahlhaCard(
-                              onTap: () => context.push('/student/setup'),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.tune,
-                                      color: SahlhaColors.teal),
-                                  const SizedBox(width: SahlhaSpacing.md),
-                                  Expanded(
-                                    child: Text(
-                                      'Tell Sahlha how you learn best (1 minute).',
-                                      style: text.titleMedium,
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right,
-                                      color: SahlhaColors.muted),
-                                ],
-                              ),
-                            )
-                          : null,
-                    ) ??
-                    const SizedBox.shrink(),
-                if (profile.valueOrNull?.onboardingCompleted == false)
-                  const SizedBox(height: SahlhaSpacing.md),
+                const SizedBox(height: 12),
+                Text(
+                  'Make room for one good step.',
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: SahlhaColors.muted),
+                ),
+                const SizedBox(height: 26),
                 home.when(
-                  loading: () => const LoadingState(
-                      message: 'Getting your next step…'),
-                  error: (e, _) => ErrorState(
-                      message: e.toString(),
-                      onRetry: () => ref.invalidate(studentHomeProvider)),
-                  data: (data) => _HomeBody(data: data),
+                  loading: () =>
+                      const SizedBox(height: 320, child: JourneyLoading()),
+                  error: (_, _) => ErrorState(
+                    message: "We couldn't load your next step.",
+                    onRetry: () => ref.invalidate(studentHomeProvider),
+                  ),
+                  data: (data) => _HomeLearning(data: data),
                 ),
               ],
             ),
@@ -96,155 +74,203 @@ class StudentHomeScreen extends ConsumerWidget {
   }
 }
 
-List<Widget> _supplementaryCard(
-    BuildContext context, Map<String, dynamic> data) {
-  final supp = data['supplementary'] as Map<String, dynamic>?;
-  final total = (supp?['total_skills'] as num?)?.toInt() ?? 0;
-  if (supp == null || total == 0) return [];
-  final text = Theme.of(context).textTheme;
-  return [
-    const SizedBox(height: SahlhaSpacing.xl),
-    Text('Extra practice', style: text.titleLarge),
-    const SizedBox(height: SahlhaSpacing.sm),
-    SahlhaCard(
-      onTap: () => context.push('/student/learn?supplementary=true'),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text('$total extra skills from your family',
-                style: text.titleMedium),
-          ),
-          const Icon(Icons.chevron_right, color: SahlhaColors.muted),
-        ],
-      ),
-    ),
-  ];
-}
-
-class _HomeBody extends StatelessWidget {
-  const _HomeBody({required this.data});
-
+class _HomeLearning extends ConsumerWidget {
+  const _HomeLearning({required this.data});
   final Map<String, dynamic> data;
-
   @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final rooms = (data['classrooms'] as List? ?? []);
-    if (rooms.isEmpty) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rooms = (data['classrooms'] as List? ?? []).whereType<Map>().toList();
+    final supp = data['supplementary'] as Map?;
+    final hasExtra = (supp?['total_skills'] as num? ?? 0) > 0;
+    final room =
+        rooms.where((r) => r['current'] != null).firstOrNull ??
+        rooms.firstOrNull;
+    final useExtra =
+        hasExtra &&
+        (room == null || room['current'] == null) &&
+        supp?['current'] != null;
+    if (room == null && !hasExtra) {
       return EmptyState(
-        title: 'No classroom yet',
-        message:
-            'Ask your teacher for the classroom code, then join to start learning.',
+        title: 'Your first step is waiting',
+        message: 'Ask your teacher for a classroom code to begin.',
         action: SahlhaPrimaryButton(
           label: 'Join a classroom',
           onPressed: () => context.push('/student/join'),
         ),
       );
     }
-    final first = rooms.first as Map<String, dynamic>;
-    final current = first['current'] as Map<String, dynamic>?;
-    final summary =
-        (first['summary'] as Map?)?.cast<String, dynamic>() ?? {};
-    final mastered = (summary['mastered'] as num?)?.toInt() ?? 0;
-    final total = (first['total_skills'] as num?)?.toInt() ?? 0;
-
+    final roomId = useExtra ? null : room?['classroom_id']?.toString();
+    final extra = useExtra || room == null;
+    final provider = studentLearningPathProvider(
+      classroomId: roomId,
+      supplementary: extra,
+    );
+    final path = ref.watch(provider);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (current != null) ...[
-          Text('Continue learning', style: text.titleLarge),
-          const SizedBox(height: SahlhaSpacing.sm),
-          SahlhaCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        path.when(
+          loading: () => const SizedBox(height: 260, child: JourneyLoading()),
+          error: (_, _) => ErrorState(
+            message: "We couldn't load your next lesson.",
+            onRetry: () => ref.invalidate(provider),
+          ),
+          data: (value) {
+            final journey = LearningJourney.fromJson(
+              value,
+              subject: room?['subject']?.toString() ?? '',
+            );
+            final unit = journey.activeUnit;
+            final current = unit?.current;
+            if (unit == null || journey.total == 0) {
+              return const EmptyState(
+                title: 'Your learning path is being prepared.',
+                message: 'Come back soon for your first step.',
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(first['subject']?.toString() ?? '',
-                    style: text.bodySmall
-                        ?.copyWith(color: SahlhaColors.tealDark)),
-                const SizedBox(height: 2),
-                Text(current['name']?.toString() ?? 'Your next skill',
-                    style: text.titleLarge),
-                const SizedBox(height: SahlhaSpacing.md),
-                SahlhaPrimaryButton(
-                  label: 'Continue',
-                  onPressed: () => context.push(
-                    '/student/skill/${current['skill_id']}?materialId=${current['material_id']}&classroomId=${first['classroom_id']}',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: SahlhaSpacing.xl),
-        ],
-        Text("Today's goal", style: text.titleLarge),
-        const SizedBox(height: SahlhaSpacing.sm),
-        SahlhaCard(
-          child: Row(
-            children: [
-              MasteryRing(mastered: mastered, total: total, size: 84),
-              const SizedBox(width: SahlhaSpacing.lg),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      total == 0
-                          ? 'Your learning path is being prepared.'
-                          : '$mastered of $total skills mastered',
-                      style: text.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Complete 1 lesson to keep going.',
-                      style: text.bodySmall
-                          ?.copyWith(color: SahlhaColors.muted),
-                    ),
-                    const SizedBox(height: SahlhaSpacing.sm),
-                    SahlhaSecondaryButton(
-                      label: 'My learning path',
-                      onPressed: () => context.go(
-                          '/student/learn?classroomId=${first['classroom_id']}'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        ..._supplementaryCard(context, data),
-        if (rooms.length > 1) ...[
-          const SizedBox(height: SahlhaSpacing.xl),
-          Text('My classrooms', style: text.titleLarge),
-          const SizedBox(height: SahlhaSpacing.sm),
-          ...rooms.skip(1).map((r) {
-            final room = r as Map<String, dynamic>;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
-              child: SahlhaCard(
-                onTap: () => context.go(
-                    '/student/learn?classroomId=${room['classroom_id']}'),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(room['name']?.toString() ?? '',
-                              style: text.titleMedium),
-                          Text(room['subject']?.toString() ?? '',
-                              style: text.bodySmall?.copyWith(
-                                  color: SahlhaColors.muted)),
-                        ],
+                if (current != null)
+                  CurrentSkillCard(
+                    title: current.title,
+                    contextLabel: 'CONTINUE LEARNING',
+                    subtitle:
+                        'Unit ${unit.number} · ${unit.title}\nSkill ${current.index + 1} of ${unit.steps.length}',
+                    started: current.skill.attempted > 0,
+                    progress: unit.steps.isEmpty
+                        ? null
+                        : (current.index + 1) / unit.steps.length,
+                    onTap: () => context.push(
+                      lessonLocation(
+                        current,
+                        classroomId: roomId,
+                        supplementary: extra,
                       ),
                     ),
-                    const Icon(Icons.chevron_right,
-                        color: SahlhaColors.muted),
-                  ],
+                    onContinue: () => context.push(
+                      lessonLocation(
+                        current,
+                        classroomId: roomId,
+                        supplementary: extra,
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: SahlhaColors.tealSoft,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const LearningMark(),
+                        const SizedBox(height: 14),
+                        Text(
+                          journey.mastered == journey.total
+                              ? 'Look how far you’ve come.'
+                              : 'Learn at your own pace.',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: () => context.go(
+                            learningLocation(
+                              classroomId: roomId,
+                              supplementary: extra,
+                            ),
+                          ),
+                          child: const Text('Explore your path'),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: SahlhaColors.surfaceRaised,
+                    border: Border.all(color: SahlhaColors.borderSubtle),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: SahlhaShadows.soft,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const JourneyEyebrow('A SMALL GOAL FOR TODAY'),
+                      const SizedBox(height: 10),
+                      Text(
+                        current == null
+                            ? 'Revisit something you learned'
+                            : 'Take one learning step',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'One learning step today. A few focused minutes at your own pace.',
+                      ),
+                      const SizedBox(height: 18),
+                      UnitProgressBar(
+                        completed: journey.mastered,
+                        total: journey.total,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${journey.mastered} of ${journey.total} skills mastered',
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.go(
+                    learningLocation(classroomId: roomId, supplementary: extra),
+                  ),
+                  child: const Text('See your learning path'),
+                ),
+              ],
+            );
+          },
+        ),
+        if (rooms.length > 1) ...[
+          const SizedBox(height: 16),
+          const JourneyEyebrow('MORE TO EXPLORE'),
+          for (final other in rooms.where((r) => r['classroom_id'] != roomId))
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                studentTitle(
+                  other['subject']?.toString() ?? '',
+                  fallback: 'Your classroom',
                 ),
               ),
-            );
-          }),
+              trailing: const Icon(Icons.arrow_forward_rounded),
+              onTap: () => context.go(
+                learningLocation(
+                  classroomId: other['classroom_id']?.toString(),
+                ),
+              ),
+            ),
         ],
+        if (hasExtra && !extra)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.auto_stories_outlined,
+              color: SahlhaColors.tealDark,
+            ),
+            title: const Text('Extra learning'),
+            subtitle: const Text('A little support from your family'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.go(learningLocation(supplementary: true)),
+          ),
+        if (data['onboarding_completed'] != true)
+          TextButton.icon(
+            onPressed: () => context.push('/student/setup'),
+            icon: const Icon(Icons.tune_rounded),
+            label: const Text('Make learning feel right for you'),
+          ),
       ],
     );
   }

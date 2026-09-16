@@ -8,6 +8,8 @@ import '../../../core/theme/sahlha_colors.dart';
 import '../../../core/theme/sahlha_spacing.dart';
 import '../../../core/widgets/sahlha_widgets.dart';
 import '../../learning_profile/data/learning_profile_repository.dart';
+import 'journey_presentation.dart';
+import 'widgets/learning_journey.dart' show StudentCanvas, JourneyEyebrow;
 
 /// Secondary student features live here (NOT in the bottom navigation).
 class StudentProfileScreen extends ConsumerWidget {
@@ -20,118 +22,139 @@ class StudentProfileScreen extends ConsumerWidget {
     final profile = ref.watch(learningProfileProvider);
 
     return Scaffold(
-      appBar: const SahlhaAppBar(title: 'Profile'),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(SahlhaSpacing.page),
-          children: [
-            SahlhaCard(
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
+      appBar: const SahlhaAppBar(title: 'Your profile'),
+      body: StudentCanvas(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(SahlhaSpacing.page),
+            children: [
+              const JourneyEyebrow('LEARNING THAT FEELS LIKE YOU'),
+              const SizedBox(height: 12),
+              Text('Your learning, your way.', style: text.headlineSmall),
+              const SizedBox(height: SahlhaSpacing.lg),
+              SahlhaCard(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: const BoxDecoration(
                         color: SahlhaColors.tealSoft,
-                        shape: BoxShape.circle),
-                    child: const Icon(Icons.school_outlined,
-                        color: SahlhaColors.teal, size: 30),
-                  ),
-                  const SizedBox(width: SahlhaSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(user?.name ?? '',
-                            style: text.titleLarge),
-                        Text(user?.email ?? '',
-                            style: text.bodySmall?.copyWith(
-                                color: SahlhaColors.muted)),
-                      ],
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.school_outlined,
+                        color: SahlhaColors.teal,
+                        size: 30,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: SahlhaSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cleanStudentText(user?.name ?? ''),
+                            style: text.titleLarge,
+                          ),
+                          Text(
+                            user?.email ?? '',
+                            style: text.bodySmall?.copyWith(
+                              color: SahlhaColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: SahlhaSpacing.lg),
-            profile.whenOrNull(
-                  data: (p) => SahlhaCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Parent link code',
-                            style: text.titleMedium),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Share this code with a parent so they can follow your progress.',
-                          style: text.bodySmall?.copyWith(
-                              color: SahlhaColors.muted),
-                        ),
-                        const SizedBox(height: SahlhaSpacing.sm),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: SahlhaColors.tealFaint,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                      color: SahlhaColors.tealSoft),
-                                ),
-                                child: Text(
-                                  p.linkCode.isEmpty
-                                      ? '—'
-                                      : p.linkCode,
-                                  style: text.titleLarge?.copyWith(
+              const SizedBox(height: SahlhaSpacing.lg),
+              profile.whenOrNull(
+                    data: (p) => SahlhaCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Parent link code', style: text.titleMedium),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Share this code with a parent so they can follow your progress.',
+                            style: text.bodySmall?.copyWith(
+                              color: SahlhaColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: SahlhaSpacing.sm),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: SahlhaColors.tealFaint,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: SahlhaColors.tealSoft,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    p.linkCode.isEmpty ? '—' : p.linkCode,
+                                    style: text.titleLarge?.copyWith(
                                       letterSpacing: 3,
-                                      color: SahlhaColors.tealDark),
+                                      color: SahlhaColors.tealDark,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.copy_outlined),
-                              onPressed: p.linkCode.isEmpty
-                                  ? null
-                                  : () {
-                                      Clipboard.setData(ClipboardData(
-                                          text: p.linkCode));
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                              content: Text(
-                                                  'Code copied')));
-                                    },
-                            ),
-                          ],
-                        ),
-                      ],
+                              IconButton(
+                                icon: const Icon(Icons.copy_outlined),
+                                onPressed: p.linkCode.isEmpty
+                                    ? null
+                                    : () {
+                                        HapticFeedback.lightImpact();
+                                        Clipboard.setData(
+                                          ClipboardData(text: p.linkCode),
+                                        );
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Code copied — share it with your parent.',
+                                                ),
+                                              ),
+                                            );
+                                      },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ) ??
-                const SizedBox.shrink(),
-            const SizedBox(height: SahlhaSpacing.lg),
-            _Tile(
-              icon: Icons.group_add_outlined,
-              title: 'Join a classroom',
-              onTap: () => context.push('/student/join'),
-            ),
-            _Tile(
-              icon: Icons.tune_outlined,
-              title: 'How I learn best',
-              subtitle: 'Review your learning preferences',
-              onTap: () => context.push('/student/setup'),
-            ),
-            _Tile(
-              icon: Icons.logout_outlined,
-              title: 'Log out',
-              onTap: () async {
-                await ref
-                    .read(authControllerProvider.notifier)
-                    .logout();
-              },
-            ),
-          ],
+                  ) ??
+                  const SizedBox.shrink(),
+              const SizedBox(height: SahlhaSpacing.lg),
+              _Tile(
+                icon: Icons.group_add_outlined,
+                title: 'Join a classroom',
+                onTap: () => context.push('/student/join'),
+              ),
+              _Tile(
+                icon: Icons.tune_outlined,
+                title: 'How I learn best',
+                subtitle: 'Review your learning preferences',
+                onTap: () => context.push('/student/setup'),
+              ),
+              _Tile(
+                icon: Icons.logout_outlined,
+                title: 'Log out',
+                onTap: () async {
+                  await ref.read(authControllerProvider.notifier).logout();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -139,7 +162,12 @@ class StudentProfileScreen extends ConsumerWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.icon, required this.title, this.subtitle, this.onTap});
+  const _Tile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+  });
 
   final IconData icon;
   final String title;
@@ -161,11 +189,12 @@ class _Tile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
                   if (subtitle != null)
-                    Text(subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      subtitle!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                 ],
               ),
             ),

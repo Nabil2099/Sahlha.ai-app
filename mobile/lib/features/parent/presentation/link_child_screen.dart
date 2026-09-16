@@ -33,8 +33,8 @@ class _LinkChildScreenState extends ConsumerState<LinkChildScreen> {
       await ref.read(parentRepositoryProvider).linkChild(code);
       ref.invalidate(linkedChildrenProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Child linked.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Child linked.')));
         context.go('/parent/home');
       }
     } on ApiException catch (e) {
@@ -73,12 +73,17 @@ class _LinkChildScreenState extends ConsumerState<LinkChildScreen> {
                   LengthLimitingTextInputFormatter(12),
                 ],
                 decoration: const InputDecoration(
-                    labelText: 'Link code', hintText: 'Enter code'),
+                  labelText: 'Link code',
+                  hintText: 'Enter code',
+                ),
                 onSubmitted: (_) => _link(),
               ),
               const SizedBox(height: SahlhaSpacing.xl),
               SahlhaPrimaryButton(
-                  label: 'Link child', loading: _busy, onPressed: _link),
+                label: 'Link child',
+                loading: _busy,
+                onPressed: _link,
+              ),
             ],
           ),
         ),

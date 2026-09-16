@@ -16,8 +16,7 @@ class JoinClassroomScreen extends ConsumerStatefulWidget {
       _JoinClassroomScreenState();
 }
 
-class _JoinClassroomScreenState
-    extends ConsumerState<JoinClassroomScreen> {
+class _JoinClassroomScreenState extends ConsumerState<JoinClassroomScreen> {
   final _code = TextEditingController();
   bool _busy = false;
 
@@ -32,14 +31,18 @@ class _JoinClassroomScreenState
     if (code.isEmpty) return;
     setState(() => _busy = true);
     try {
-      final result =
-          await ref.read(classroomRepositoryProvider).join(code);
+      final result = await ref.read(classroomRepositoryProvider).join(code);
       ref.invalidate(classroomListProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(result.alreadyEnrolled
-                ? 'You are already in ${result.classroom.name}.'
-                : 'Welcome to ${result.classroom.name}!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.alreadyEnrolled
+                  ? 'You are already in ${result.classroom.name}.'
+                  : 'Welcome to ${result.classroom.name}!',
+            ),
+          ),
+        );
         context.go('/student/home');
       }
     } on ApiException catch (e) {
@@ -63,11 +66,12 @@ class _JoinClassroomScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Enter your classroom code',
-                  style: text.headlineSmall),
+              Text('Enter your classroom code', style: text.headlineSmall),
               const SizedBox(height: SahlhaSpacing.sm),
-              Text('Ask your teacher for the code. It looks like K7P2MQ9A.',
-                  style: text.bodyMedium),
+              Text(
+                'Ask your teacher for the code. It looks like K7P2MQ9A.',
+                style: text.bodyMedium,
+              ),
               const SizedBox(height: SahlhaSpacing.xl),
               TextField(
                 controller: _code,
@@ -77,14 +81,18 @@ class _JoinClassroomScreenState
                   LengthLimitingTextInputFormatter(12),
                 ],
                 decoration: const InputDecoration(
-                    labelText: 'Classroom code',
-                    hintText: 'Enter code',
-                    helperText: 'Letters and numbers only'),
+                  labelText: 'Classroom code',
+                  hintText: 'Enter code',
+                  helperText: 'Letters and numbers only',
+                ),
                 onSubmitted: (_) => _join(),
               ),
               const SizedBox(height: SahlhaSpacing.xl),
               SahlhaPrimaryButton(
-                  label: 'Join', loading: _busy, onPressed: _join),
+                label: 'Join',
+                loading: _busy,
+                onPressed: _join,
+              ),
             ],
           ),
         ),

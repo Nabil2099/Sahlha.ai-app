@@ -32,18 +32,21 @@ class TeacherDashboardScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Good day,',
-                    style: text.bodyMedium
-                        ?.copyWith(color: SahlhaColors.muted)),
-                Text(user?.name.split(' ').first ?? 'Teacher',
-                    style: text.headlineSmall),
+                Text(
+                  'Good day,',
+                  style: text.bodyMedium?.copyWith(color: SahlhaColors.muted),
+                ),
+                Text(
+                  user?.name.split(' ').first ?? 'Teacher',
+                  style: text.headlineSmall,
+                ),
                 const SizedBox(height: SahlhaSpacing.lg),
                 overview.when(
                   loading: () => const LoadingState(),
                   error: (e, _) => ErrorState(
-                      message: e.toString(),
-                      onRetry: () =>
-                          ref.invalidate(teacherOverviewProvider)),
+                    message: e.toString(),
+                    onRetry: () => ref.invalidate(teacherOverviewProvider),
+                  ),
                   data: (data) => _DashboardBody(data: data),
                 ),
               ],
@@ -69,18 +72,15 @@ class _DashboardBody extends StatelessWidget {
       children: [
         Row(
           children: [
-            _Stat(
-                value: '${data['num_classrooms'] ?? 0}',
-                label: 'Classes'),
+            _Stat(value: '${data['num_classrooms'] ?? 0}', label: 'Classes'),
+            const SizedBox(width: SahlhaSpacing.sm),
+            _Stat(value: '${data['num_students'] ?? 0}', label: 'Students'),
             const SizedBox(width: SahlhaSpacing.sm),
             _Stat(
-                value: '${data['num_students'] ?? 0}',
-                label: 'Students'),
-            const SizedBox(width: SahlhaSpacing.sm),
-            _Stat(
-                value: '${data['pending_banks'] ?? 0}',
-                label: 'To review',
-                highlight: (data['pending_banks'] as num? ?? 0) > 0),
+              value: '${data['pending_banks'] ?? 0}',
+              label: 'To review',
+              highlight: (data['pending_banks'] as num? ?? 0) > 0,
+            ),
           ],
         ),
         const SizedBox(height: SahlhaSpacing.xl),
@@ -93,27 +93,33 @@ class _DashboardBody extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: const BoxDecoration(
-                      color: SahlhaColors.sunSoft,
-                      shape: BoxShape.circle),
-                  child: const Icon(Icons.rate_review_outlined,
-                      color: Color(0xFFB45309)),
+                    color: SahlhaColors.sunSoft,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.rate_review_outlined,
+                    color: Color(0xFFB45309),
+                  ),
                 ),
                 const SizedBox(width: SahlhaSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Questions waiting for review',
-                          style: text.titleMedium),
                       Text(
-                          '${data['pending_banks']} AI-generated banks need your approval.',
-                          style: text.bodySmall?.copyWith(
-                              color: SahlhaColors.muted)),
+                        'Questions waiting for review',
+                        style: text.titleMedium,
+                      ),
+                      Text(
+                        '${data['pending_banks']} AI-generated banks need your approval.',
+                        style: text.bodySmall?.copyWith(
+                          color: SahlhaColors.muted,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right,
-                    color: SahlhaColors.muted),
+                const Icon(Icons.chevron_right, color: SahlhaColors.muted),
               ],
             ),
           ),
@@ -123,18 +129,17 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: SahlhaSpacing.sm),
         if (needing.isEmpty)
           const SahlhaCard(
-            child: Text(
-                'Everyone is on track right now. Nice work.'),
+            child: Text('Everyone is on track right now. Nice work.'),
           )
         else
           ...needing.take(6).map((n) {
             final item = n as Map<String, dynamic>;
             return Padding(
-              padding:
-                  const EdgeInsets.only(bottom: SahlhaSpacing.sm),
+              padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
               child: SahlhaCard(
                 onTap: () => context.push(
-                    '/teacher/students/${item['classroom_id']}/${item['student_id']}'),
+                  '/teacher/students/${item['classroom_id']}/${item['student_id']}',
+                ),
                 padding: const EdgeInsets.all(SahlhaSpacing.md),
                 child: Row(
                   children: [
@@ -142,24 +147,29 @@ class _DashboardBody extends StatelessWidget {
                       width: 40,
                       height: 40,
                       decoration: const BoxDecoration(
-                          color: SahlhaColors.warningSoft,
-                          shape: BoxShape.circle),
-                      child: const Icon(Icons.person_outline,
-                          color: Color(0xFFB45309)),
+                        color: SahlhaColors.warningSoft,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person_outline,
+                        color: Color(0xFFB45309),
+                      ),
                     ),
                     const SizedBox(width: SahlhaSpacing.md),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(item['name']?.toString() ?? '',
-                              style: text.titleMedium),
                           Text(
-                              item['classroom_name']?.toString() ??
-                                  '',
-                              style: text.bodySmall?.copyWith(
-                                  color: SahlhaColors.muted)),
+                            item['name']?.toString() ?? '',
+                            style: text.titleMedium,
+                          ),
+                          Text(
+                            item['classroom_name']?.toString() ?? '',
+                            style: text.bodySmall?.copyWith(
+                              color: SahlhaColors.muted,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -180,8 +190,11 @@ class _DashboardBody extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat(
-      {required this.value, required this.label, this.highlight = false});
+  const _Stat({
+    required this.value,
+    required this.label,
+    this.highlight = false,
+  });
 
   final String value;
   final String label;
@@ -194,14 +207,16 @@ class _Stat extends StatelessWidget {
       child: SahlhaCard(
         child: Column(
           children: [
-            Text(value,
-                style: text.headlineSmall?.copyWith(
-                    color: highlight
-                        ? const Color(0xFFB45309)
-                        : SahlhaColors.ink)),
-            Text(label,
-                style: text.bodySmall
-                    ?.copyWith(color: SahlhaColors.muted)),
+            Text(
+              value,
+              style: text.headlineSmall?.copyWith(
+                color: highlight ? const Color(0xFFB45309) : SahlhaColors.ink,
+              ),
+            ),
+            Text(
+              label,
+              style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
+            ),
           ],
         ),
       ),

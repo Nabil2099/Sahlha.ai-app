@@ -32,18 +32,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    await ref.read(authControllerProvider.notifier).login(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
+    await ref
+        .read(authControllerProvider.notifier)
+        .login(email: _email.text.trim(), password: _password.text);
     if (!mounted) return;
     final state = ref.read(authControllerProvider);
     state.whenOrNull(
       data: (user) {
         if (user != null) context.go(user.homeRoute);
       },
-      error: (e, _) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString()))),
+      error: (e, _) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(e.toString()))),
     );
   }
 
@@ -70,9 +70,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
                   decoration: const InputDecoration(
-                      labelText: 'Email', hintText: 'you@example.com'),
-                  validator: (v) =>
-                      (v == null || !v.contains('@')) ? 'Enter your email' : null,
+                    labelText: 'Email',
+                    hintText: 'you@example.com',
+                  ),
+                  validator: (v) => (v == null || !v.contains('@'))
+                      ? 'Enter your email'
+                      : null,
                 ),
                 const SizedBox(height: SahlhaSpacing.md),
                 TextFormField(
@@ -81,20 +84,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   decoration: InputDecoration(
                     labelText: 'Password',
                     suffixIcon: IconButton(
-                      icon: Icon(_obscure
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined),
-                      onPressed: () =>
-                          setState(() => _obscure = !_obscure),
+                      icon: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
-                  validator: (v) =>
-                      (v == null || v.length < 6) ? 'Enter your password' : null,
+                  validator: (v) => (v == null || v.length < 6)
+                      ? 'Enter your password'
+                      : null,
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: SahlhaSpacing.xl),
                 SahlhaPrimaryButton(
-                    label: 'Log in', loading: loading, onPressed: _submit),
+                  label: 'Log in',
+                  loading: loading,
+                  onPressed: _submit,
+                ),
                 const SizedBox(height: SahlhaSpacing.md),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

@@ -27,22 +27,27 @@ class ParentProfileScreen extends ConsumerWidget {
                     width: 56,
                     height: 56,
                     decoration: const BoxDecoration(
-                        color: SahlhaColors.tealSoft,
-                        shape: BoxShape.circle),
-                    child: const Icon(Icons.favorite_outline,
-                        color: SahlhaColors.teal, size: 30),
+                      color: SahlhaColors.tealSoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.favorite_outline,
+                      color: SahlhaColors.teal,
+                      size: 30,
+                    ),
                   ),
                   const SizedBox(width: SahlhaSpacing.md),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user?.name ?? '',
-                            style: text.titleLarge),
-                        Text(user?.email ?? '',
-                            style: text.bodySmall?.copyWith(
-                                color: SahlhaColors.muted)),
+                        Text(user?.name ?? '', style: text.titleLarge),
+                        Text(
+                          user?.email ?? '',
+                          style: text.bodySmall?.copyWith(
+                            color: SahlhaColors.muted,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -55,29 +60,24 @@ class ParentProfileScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(SahlhaSpacing.md),
               child: const Row(
                 children: [
-                  Icon(Icons.group_add_outlined,
-                      color: SahlhaColors.teal),
+                  Icon(Icons.group_add_outlined, color: SahlhaColors.teal),
                   SizedBox(width: SahlhaSpacing.md),
                   Expanded(child: Text('Link a child')),
-                  Icon(Icons.chevron_right,
-                      color: SahlhaColors.muted),
+                  Icon(Icons.chevron_right, color: SahlhaColors.muted),
                 ],
               ),
             ),
             const SizedBox(height: SahlhaSpacing.sm),
             SahlhaCard(
-              onTap: () async => ref
-                  .read(authControllerProvider.notifier)
-                  .logout(),
+              onTap: () async =>
+                  ref.read(authControllerProvider.notifier).logout(),
               padding: const EdgeInsets.all(SahlhaSpacing.md),
               child: const Row(
                 children: [
-                  Icon(Icons.logout_outlined,
-                      color: SahlhaColors.teal),
+                  Icon(Icons.logout_outlined, color: SahlhaColors.teal),
                   SizedBox(width: SahlhaSpacing.md),
                   Expanded(child: Text('Log out')),
-                  Icon(Icons.chevron_right,
-                      color: SahlhaColors.muted),
+                  Icon(Icons.chevron_right, color: SahlhaColors.muted),
                 ],
               ),
             ),

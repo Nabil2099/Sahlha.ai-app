@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,12 +21,16 @@ class ChildProgressScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-              children.valueOrNull
-                      ?.where((c) => c.id == (childId ?? ref.watch(selectedChildProvider)))
-                      .firstOrNull
-                      ?.name ??
-                  'Child progress',
-              style: Theme.of(context).textTheme.titleLarge),
+            children.value
+                    ?.where(
+                      (c) =>
+                          c.id == (childId ?? ref.watch(selectedChildProvider)),
+                    )
+                    .firstOrNull
+                    ?.name ??
+                'Child progress',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           bottom: const TabBar(
             labelColor: SahlhaColors.tealDark,
             unselectedLabelColor: SahlhaColors.muted,
@@ -42,9 +45,9 @@ class ChildProgressScreen extends ConsumerWidget {
         body: children.when(
           loading: () => const LoadingState(),
           error: (e, _) => ErrorState(
-              message: e.toString(),
-              onRetry: () =>
-                  ref.invalidate(linkedChildrenProvider)),
+            message: e.toString(),
+            onRetry: () => ref.invalidate(linkedChildrenProvider),
+          ),
           data: (list) {
             if (list.isEmpty) {
               return EmptyState(
@@ -56,9 +59,8 @@ class ChildProgressScreen extends ConsumerWidget {
                 ),
               );
             }
-            final id = childId ??
-                ref.watch(selectedChildProvider) ??
-                list.first.id;
+            final id =
+                childId ?? ref.watch(selectedChildProvider) ?? list.first.id;
             return _ProgressTabs(childId: id);
           },
         ),
@@ -78,9 +80,9 @@ class _ProgressTabs extends ConsumerWidget {
     return progress.when(
       loading: () => const LoadingState(),
       error: (e, _) => ErrorState(
-          message: e.toString(),
-          onRetry: () =>
-              ref.invalidate(_childProgressProvider(childId))),
+        message: e.toString(),
+        onRetry: () => ref.invalidate(_childProgressProvider(childId)),
+      ),
       data: (data) => TabBarView(
         children: [
           _OverviewTab(data: data, childId: childId),
@@ -94,8 +96,8 @@ class _ProgressTabs extends ConsumerWidget {
 
 final _childProgressProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, id) {
-  return ref.watch(parentRepositoryProvider).childProgress(id);
-});
+      return ref.watch(parentRepositoryProvider).childProgress(id);
+    });
 
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({required this.data, required this.childId});
@@ -120,7 +122,8 @@ class _OverviewTab extends StatelessWidget {
         final summary =
             (room['summary'] as Map?)?.cast<String, dynamic>() ?? {};
         int count(String k) => (summary[k] as num?)?.toInt() ?? 0;
-        final total = count('mastered') +
+        final total =
+            count('mastered') +
             count('developing') +
             count('needs_practice') +
             count('not_started');
@@ -131,13 +134,14 @@ class _OverviewTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${room['subject'] ?? ''} · ${room['name'] ?? ''}',
-                    style: text.titleLarge),
+                Text(
+                  '${room['subject'] ?? ''} · ${room['name'] ?? ''}',
+                  style: text.titleLarge,
+                ),
                 const SizedBox(height: SahlhaSpacing.md),
                 Row(
                   children: [
-                    MasteryRing(
-                        mastered: count('mastered'), total: total),
+                    MasteryRing(mastered: count('mastered'), total: total),
                     const SizedBox(width: SahlhaSpacing.lg),
                     Expanded(
                       child: Column(
@@ -145,14 +149,19 @@ class _OverviewTab extends StatelessWidget {
                         children: [
                           if (recent != null)
                             Text(
-                                'Recent practice: ${(recent * 100).round()}%',
-                                style: text.titleMedium),
-                          Text('${count('needs_practice')} need practice',
-                              style: text.bodyMedium),
+                              'Recent practice: ${(recent * 100).round()}%',
+                              style: text.titleMedium,
+                            ),
                           Text(
-                              '${count('developing')} developing · ${count('not_started')} not started',
-                              style: text.bodySmall?.copyWith(
-                                  color: SahlhaColors.muted)),
+                            '${count('needs_practice')} need practice',
+                            style: text.bodyMedium,
+                          ),
+                          Text(
+                            '${count('developing')} developing · ${count('not_started')} not started',
+                            style: text.bodySmall?.copyWith(
+                              color: SahlhaColors.muted,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -179,7 +188,7 @@ class _SkillsTab extends StatelessWidget {
     final skills = [
       for (final r in rooms)
         for (final s in (((r as Map)['skills'] as List?) ?? []))
-          s as Map<String, dynamic>
+          s as Map<String, dynamic>,
     ];
     if (skills.isEmpty) {
       return const EmptyState(
@@ -198,11 +207,13 @@ class _SkillsTab extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                    child: Text(
-                        (s['name'] as String?)?.isNotEmpty == true
-                            ? s['name'] as String
-                            : (s['skill_id']?.toString() ?? ''),
-                        style: text.titleMedium)),
+                  child: Text(
+                    (s['name'] as String?)?.isNotEmpty == true
+                        ? s['name'] as String
+                        : (s['skill_id']?.toString() ?? ''),
+                    style: text.titleMedium,
+                  ),
+                ),
                 SkillStatusBadge(state: state),
               ],
             ),
@@ -240,12 +251,9 @@ class _ActivityTab extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                    correct
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: correct
-                        ? SahlhaColors.success
-                        : SahlhaColors.muted),
+                  correct ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: correct ? SahlhaColors.success : SahlhaColors.muted,
+                ),
                 const SizedBox(width: SahlhaSpacing.md),
                 Expanded(
                   child: Text(

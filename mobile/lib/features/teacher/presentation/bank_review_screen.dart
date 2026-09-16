@@ -49,22 +49,22 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
       body: bank.when(
         loading: () => const LoadingState(),
         error: (e, _) => ErrorState(
-            message: e.toString(),
-            onRetry: () =>
-                ref.invalidate(bankDetailProvider(widget.bankId))),
+          message: e.toString(),
+          onRetry: () => ref.invalidate(bankDetailProvider(widget.bankId)),
+        ),
         data: (detail) {
           final total = detail.questions.length;
           if (total == 0) {
             return const EmptyState(
               title: 'No questions left',
-              message:
-                  'All questions were removed. Regenerate the bank to draft new ones.',
+              message: 'All questions were removed. Regenerate the bank to draft new ones.',
             );
           }
           final safeIndex = _index.clamp(0, total - 1);
           if (safeIndex != _index) {
             WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => _index = safeIndex));
+              (_) => setState(() => _index = safeIndex),
+            );
           }
           final q = detail.questions[safeIndex];
           return SafeArea(
@@ -77,19 +77,22 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                            '${detail.skillId} · v${detail.version}',
-                            style: text.bodySmall?.copyWith(
-                                color: SahlhaColors.muted)),
+                          '${detail.skillId} · v${detail.version}',
+                          style: text.bodySmall?.copyWith(
+                            color: SahlhaColors.muted,
+                          ),
+                        ),
                       ),
                       _StatusChip(status: detail.status),
                     ],
                   ),
                   const SizedBox(height: SahlhaSpacing.sm),
-                  Text('Question ${safeIndex + 1} of $total',
-                      style: text.titleMedium),
+                  Text(
+                    'Question ${safeIndex + 1} of $total',
+                    style: text.titleMedium,
+                  ),
                   const SizedBox(height: SahlhaSpacing.sm),
-                  SahlhaProgressBar(
-                      value: (safeIndex + 1) / total, height: 8),
+                  SahlhaProgressBar(value: (safeIndex + 1) / total, height: 8),
                   const SizedBox(height: SahlhaSpacing.md),
                   Expanded(
                     child: SingleChildScrollView(
@@ -124,9 +127,10 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child:
-                                      CircularProgressIndicator(
-                                          strokeWidth: 2))
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : const Text('Regenerate'),
                         ),
                       ),
@@ -145,15 +149,16 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                       Expanded(
                         child: OutlinedButton(
                           style: OutlinedButton.styleFrom(
-                              foregroundColor:
-                                  SahlhaColors.danger,
-                              side: const BorderSide(
-                                  color: SahlhaColors.danger)),
+                            foregroundColor: SahlhaColors.danger,
+                            side: const BorderSide(color: SahlhaColors.danger),
+                          ),
                           onPressed: _busy
                               ? null
-                              : () => _run(() => ref
-                                  .read(teacherRepositoryProvider)
-                                  .deleteQuestion(detail.id, q.id)),
+                              : () => _run(
+                                  () => ref
+                                      .read(teacherRepositoryProvider)
+                                      .deleteQuestion(detail.id, q.id),
+                                ),
                           child: const Text('Remove'),
                         ),
                       ),
@@ -162,9 +167,11 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                         child: OutlinedButton(
                           onPressed: detail.status != 'pending_review' || _busy
                               ? null
-                              : () => _run(() => ref
-                                  .read(teacherRepositoryProvider)
-                                  .rejectBank(detail.id, '')),
+                              : () => _run(
+                                  () => ref
+                                      .read(teacherRepositoryProvider)
+                                      .rejectBank(detail.id, ''),
+                                ),
                           child: const Text('Reject bank'),
                         ),
                       ),
@@ -174,17 +181,20 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                           onPressed: detail.status != 'pending_review' || _busy
                               ? null
                               : () => _run(() async {
-                                    await ref
-                                        .read(teacherRepositoryProvider)
-                                        .approveBank(detail.id);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                              content: Text(
-                                                  'Bank approved. Students can now practice it.')));
-                                      context.pop();
-                                    }
-                                  }),
+                                  await ref
+                                      .read(teacherRepositoryProvider)
+                                      .approveBank(detail.id);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Bank approved. Students can now practice it.',
+                                        ),
+                                      ),
+                                    );
+                                    context.pop();
+                                  }
+                                }),
                           child: const Text('Approve'),
                         ),
                       ),
@@ -202,7 +212,9 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
   Future<void> _editQuestion(BankDetail detail, BankQuestion q) async {
     final question = TextEditingController(text: q.question);
     final explanation = TextEditingController(text: q.explanation);
-    final opts = q.optionTexts.map(TextEditingController.new).toList();
+    final opts = q.optionTexts
+        .map((t) => TextEditingController(text: t))
+        .toList();
     int correct = q.correctAnswer is int ? q.correctAnswer as int : 0;
     final ok = await showSahlhaSheet<bool>(
       context,
@@ -211,60 +223,68 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Edit question',
-                style: Theme.of(ctx).textTheme.titleLarge),
+            Text('Edit question', style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: SahlhaSpacing.md),
             TextField(
-                controller: question,
-                maxLines: 3,
-                decoration:
-                    const InputDecoration(labelText: 'Question')),
+              controller: question,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Question'),
+            ),
             const SizedBox(height: SahlhaSpacing.sm),
-            ...List.generate(opts.length, (i) {
-              return Padding(
-                padding:
-                    const EdgeInsets.only(bottom: SahlhaSpacing.xs),
-                child: Row(
-                  children: [
-                    Radio<int>(
-                      value: i,
-                      groupValue: correct,
-                      onChanged: (v) =>
-                          setSheet(() => correct = v ?? 0),
+            RadioGroup<int>(
+              groupValue: correct,
+              onChanged: (v) => setSheet(() => correct = v ?? 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(opts.length, (i) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: SahlhaSpacing.xs),
+                    child: Row(
+                      children: [
+                        Radio<int>(value: i),
+                        Expanded(
+                          child: TextField(
+                            controller: opts[i],
+                            decoration: InputDecoration(
+                              labelText: 'Option ${i + 1}',
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: TextField(
-                          controller: opts[i],
-                          decoration: InputDecoration(
-                              labelText: 'Option ${i + 1}')),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                  );
+                }),
+              ),
+            ),
             const SizedBox(height: SahlhaSpacing.sm),
             TextField(
-                controller: explanation,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                    labelText: 'Explanation')),
+              controller: explanation,
+              maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Explanation'),
+            ),
             const SizedBox(height: SahlhaSpacing.md),
             SahlhaPrimaryButton(
-                label: 'Save',
-                onPressed: () => Navigator.of(ctx).pop(true)),
+              label: 'Save',
+              onPressed: () => Navigator.of(ctx).pop(true),
+            ),
           ],
         ),
       ),
     );
     if (ok == true) {
-      await _run(() => ref
-          .read(teacherRepositoryProvider)
-          .editQuestion(detail.id, q.id,
+      await _run(
+        () => ref
+            .read(teacherRepositoryProvider)
+            .editQuestion(
+              detail.id,
+              q.id,
               questionText: question.text.trim(),
               options: opts.map((c) => c.text.trim()).toList(),
               correctAnswer: correct,
-              explanation: explanation.text.trim())
-          .then((_) {}));
+              explanation: explanation.text.trim(),
+            )
+            .then((_) {}),
+      );
     }
     question.dispose();
     explanation.dispose();
@@ -281,29 +301,37 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Regenerate question',
-              style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            'Regenerate question',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: SahlhaSpacing.sm),
           const Text(
-              'Optional guidance, e.g. “Make this easier” or “Use simpler language”.'),
+            'Optional guidance, e.g. “Make this easier” or “Use simpler language”.',
+          ),
           const SizedBox(height: SahlhaSpacing.md),
           TextField(
-              controller: feedback,
-              decoration: const InputDecoration(
-                  labelText: 'Guidance (optional)',
-                  hintText: 'Make this easier')),
+            controller: feedback,
+            decoration: const InputDecoration(
+              labelText: 'Guidance (optional)',
+              hintText: 'Make this easier',
+            ),
+          ),
           const SizedBox(height: SahlhaSpacing.md),
           SahlhaPrimaryButton(
-              label: 'Regenerate',
-              onPressed: () => Navigator.of(context).pop(true)),
+            label: 'Regenerate',
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
         ],
       ),
     );
     if (ok == true) {
-      await _run(() => ref
-          .read(teacherRepositoryProvider)
-          .regenerateQuestion(detail.id, q.id, feedback.text.trim())
-          .then((_) {}));
+      await _run(
+        () => ref
+            .read(teacherRepositoryProvider)
+            .regenerateQuestion(detail.id, q.id, feedback.text.trim())
+            .then((_) {}),
+      );
     }
     feedback.dispose();
   }
@@ -318,8 +346,9 @@ class _QuestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final opts = question.optionTexts;
-    final correct =
-        question.correctAnswer is int ? question.correctAnswer as int : -1;
+    final correct = question.correctAnswer is int
+        ? question.correctAnswer as int
+        : -1;
     return SahlhaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,19 +357,26 @@ class _QuestionCard extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                    color: SahlhaColors.tealSoft,
-                    borderRadius: BorderRadius.circular(99)),
-                child: Text(question.difficulty,
-                    style: text.labelSmall?.copyWith(
-                        color: SahlhaColors.tealDark,
-                        fontWeight: FontWeight.w800)),
+                  color: SahlhaColors.tealSoft,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  question.difficulty,
+                  style: text.labelSmall?.copyWith(
+                    color: SahlhaColors.tealDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               const SizedBox(width: SahlhaSpacing.sm),
-              Text(question.type,
-                  style: text.bodySmall
-                      ?.copyWith(color: SahlhaColors.muted)),
+              Text(
+                question.type,
+                style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
+              ),
             ],
           ),
           const SizedBox(height: SahlhaSpacing.md),
@@ -350,8 +386,7 @@ class _QuestionCard extends StatelessWidget {
             final isCorrect = i == correct;
             return Container(
               width: double.infinity,
-              margin:
-                  const EdgeInsets.only(bottom: SahlhaSpacing.xs),
+              margin: const EdgeInsets.only(bottom: SahlhaSpacing.xs),
               padding: const EdgeInsets.all(SahlhaSpacing.md),
               decoration: BoxDecoration(
                 color: isCorrect
@@ -359,20 +394,18 @@ class _QuestionCard extends StatelessWidget {
                     : SahlhaColors.cream,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: isCorrect
-                        ? SahlhaColors.success
-                        : SahlhaColors.line),
+                  color: isCorrect ? SahlhaColors.success : SahlhaColors.line,
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
-                      isCorrect
-                          ? Icons.check_circle
-                          : Icons.circle_outlined,
-                      size: 18,
-                      color: isCorrect
-                          ? SahlhaColors.success
-                          : SahlhaColors.muted),
+                    isCorrect ? Icons.check_circle : Icons.circle_outlined,
+                    size: 18,
+                    color: isCorrect
+                        ? SahlhaColors.success
+                        : SahlhaColors.muted,
+                  ),
                   const SizedBox(width: SahlhaSpacing.sm),
                   Expanded(child: Text(opts[i])),
                 ],
@@ -381,9 +414,10 @@ class _QuestionCard extends StatelessWidget {
           }),
           if (question.explanation.isNotEmpty) ...[
             const SizedBox(height: SahlhaSpacing.sm),
-            Text('Explanation',
-                style:
-                    text.labelSmall?.copyWith(color: SahlhaColors.muted)),
+            Text(
+              'Explanation',
+              style: text.labelSmall?.copyWith(color: SahlhaColors.muted),
+            ),
             Text(question.explanation, style: text.bodyMedium),
           ],
         ],
@@ -415,15 +449,16 @@ class _StatusChip extends StatelessWidget {
       _ => const Color(0xFFB45309),
     };
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-          color: bg, borderRadius: BorderRadius.circular(99)),
-      child: Text(label,
-          style: Theme.of(context)
-              .textTheme
-              .labelSmall
-              ?.copyWith(color: fg, fontWeight: FontWeight.w800)),
+        color: bg,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: fg, fontWeight: FontWeight.w800),
+      ),
     );
   }
 }

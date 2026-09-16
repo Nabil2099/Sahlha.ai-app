@@ -60,4 +60,13 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    """Liveness + non-secret availability flags.
+
+    Reports only booleans (TTS/image configured) so operators can verify
+    `.env` keys are loaded without ever logging or exposing secret values.
+    """
+    from sahlha.app.audio import tts as tts_mod
+    from sahlha.app.images import pexels as pexels_mod
+
+    return {"ok": True, "tts_configured": tts_mod.tts_available(),
+            "images_configured": pexels_mod.pexels_available()}

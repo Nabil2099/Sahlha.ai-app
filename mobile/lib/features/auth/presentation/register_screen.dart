@@ -34,7 +34,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    await ref.read(authControllerProvider.notifier).register(
+    await ref
+        .read(authControllerProvider.notifier)
+        .register(
           name: _name.text.trim(),
           email: _email.text.trim(),
           password: _password.text,
@@ -51,8 +53,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           context.go(user.homeRoute);
         }
       },
-      error: (e, _) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString()))),
+      error: (e, _) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(e.toString()))),
     );
   }
 
@@ -81,8 +84,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _name,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(labelText: 'Full name'),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter your name'
+                      : null,
                 ),
                 const SizedBox(height: SahlhaSpacing.md),
                 TextFormField(
@@ -90,8 +94,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
                   decoration: const InputDecoration(labelText: 'Email'),
-                  validator: (v) =>
-                      (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                  validator: (v) => (v == null || !v.contains('@'))
+                      ? 'Enter a valid email'
+                      : null,
                 ),
                 const SizedBox(height: SahlhaSpacing.md),
                 TextFormField(
@@ -101,11 +106,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     labelText: 'Password',
                     helperText: 'At least 6 characters',
                     suffixIcon: IconButton(
-                      icon: Icon(_obscure
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined),
-                      onPressed: () =>
-                          setState(() => _obscure = !_obscure),
+                      icon: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
                   validator: (v) => (v == null || v.length < 6)
@@ -115,17 +121,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 const SizedBox(height: SahlhaSpacing.xl),
                 SahlhaPrimaryButton(
-                    label: 'Create account',
-                    loading: loading,
-                    onPressed: _submit),
+                  label: 'Create account',
+                  loading: loading,
+                  onPressed: _submit,
+                ),
                 const SizedBox(height: SahlhaSpacing.md),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text('Already have an account? '),
                     TextButton(
-                      onPressed: () =>
-                          context.go('/login?role=${widget.role}'),
+                      onPressed: () => context.go('/login?role=${widget.role}'),
                       child: const Text('Log in'),
                     ),
                   ],

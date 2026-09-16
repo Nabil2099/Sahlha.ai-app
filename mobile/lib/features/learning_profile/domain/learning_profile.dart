@@ -6,9 +6,11 @@ part 'learning_profile.g.dart';
 /// How Sahlha should currently support the student. Support preferences only —
 /// never medical. `linkCode` is included for the student (parent linking).
 @freezed
-class LearningProfile with _$LearningProfile {
+abstract class LearningProfile with _$LearningProfile {
   const factory LearningProfile({
-    @JsonKey(name: 'onboarding_completed') @Default(false) bool onboardingCompleted,
+    @JsonKey(name: 'onboarding_completed')
+    @Default(false)
+    bool onboardingCompleted,
     @Default({}) Map<String, String> supports,
     @Default({}) Map<String, dynamic> observed,
     @JsonKey(name: 'support_summary') @Default([]) List<String> supportSummary,

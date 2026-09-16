@@ -1,7 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../../core/api/api_exception.dart';
 import '../data/student_repository.dart';
 import '../domain/assessment_models.dart';
 
@@ -9,7 +8,7 @@ part 'practice_controller.freezed.dart';
 part 'practice_controller.g.dart';
 
 @freezed
-class PracticeState with _$PracticeState {
+abstract class PracticeState with _$PracticeState {
   const factory PracticeState({
     @Default(false) bool starting,
     String? assessmentId,
@@ -17,11 +16,19 @@ class PracticeState with _$PracticeState {
     @Default(0) int index,
     @Default({}) Map<String, Object?> answers,
     @Default(false) bool submitting,
+    @Default(false) bool checking,
     AssessmentResult? result,
     String? error,
     @Default({}) Map<String, CheckResult> checked,
     // Progressive support level for the current question (hint -> example).
     @Default(0) int supportLevel,
+    // Scope of the started assessment, so refreshes after submit only
+    // invalidate the affected learning-path/skill providers (no refetch
+    // storms across every classroom).
+    String? classroomId,
+    String? materialId,
+    String? skillId,
+    @Default(false) bool childScope,
   }) = _PracticeState;
 }
 
@@ -43,44 +50,82 @@ class PracticeController extends _$PracticeController {
     String? skillId,
     bool childScope = false,
   }) async {
-    state = state.copyWith(starting: true, error: null, result: null);
+    if (state.starting) return;
+    state = PracticeState(
+      starting: true,
+      classroomId: classroomId,
+      materialId: materialId,
+      skillId: skillId,
+      childScope: childScope,
+    );
     try {
-      final started =
-          await ref.read(studentRepositoryProvider).startAssessment(
-                classroomId: classroomId,
-                materialId: materialId,
-                skillId: skillId,
-                childScope: childScope,
-              );
+      final started = await ref
+          .read(studentRepositoryProvider)
+          .startAssessment(
+            classroomId: classroomId,
+            materialId: materialId,
+            skillId: skillId,
+            childScope: childScope,
+          );
+      if (!ref.mounted) return;
       state = PracticeState(
-          assessmentId: started.assessmentId, questions: started.questions);
-    } on ApiException catch (e) {
-      state = state.copyWith(starting: false, error: e.message);
+        assessmentId: started.assessmentId,
+        questions: started.questions,
+        classroomId: classroomId,
+        materialId: materialId,
+        skillId: skillId,
+        childScope: childScope,
+      );
+    } catch (_) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        starting: false,
+        error: "We couldn't prepare your practice. Please try again.",
+      );
     }
   }
 
   void answerCurrent(Object? answer) {
     final q = state.current;
-    if (q == null || state.result != null) return;
+    if (q == null ||
+        state.result != null ||
+        state.checking ||
+        state.checked.containsKey(q.id)) {
+      return;
+    }
     state = state.copyWith(
-        answers: {...state.answers, q.id: answer}, supportLevel: 0);
+      answers: {...state.answers, q.id: answer},
+      supportLevel: 0,
+    );
   }
 
   Future<void> checkCurrent() async {
     final q = state.current;
     final id = state.assessmentId;
-    if (q == null || id == null || state.checked.containsKey(q.id)) return;
+    if (q == null ||
+        id == null ||
+        state.checking ||
+        state.checked.containsKey(q.id)) {
+      return;
+    }
     final answer = state.answers[q.id];
-    state = state.copyWith(error: null);
+    if (answer == null || (answer is String && answer.trim().isEmpty)) return;
+    state = state.copyWith(error: null, checking: true);
     try {
-      final res = await ref.read(studentRepositoryProvider).checkAnswer(
-            assessmentId: id,
-            questionId: q.id,
-            answer: answer,
-          );
-      state = state.copyWith(checked: {...state.checked, q.id: res});
-    } on ApiException catch (e) {
-      state = state.copyWith(error: e.message);
+      final res = await ref
+          .read(studentRepositoryProvider)
+          .checkAnswer(assessmentId: id, questionId: q.id, answer: answer);
+      if (!ref.mounted || state.assessmentId != id) return;
+      state = state.copyWith(
+        checking: false,
+        checked: {...state.checked, q.id: res},
+      );
+    } catch (_) {
+      if (!ref.mounted || state.assessmentId != id) return;
+      state = state.copyWith(
+        checking: false,
+        error: "We couldn't check your answer. Try again when you're ready.",
+      );
     }
   }
 
@@ -96,8 +141,11 @@ class PracticeController extends _$PracticeController {
     }
   }
 
-  /// Progressive support without giving away the answer.
+  /// Progressive support without giving away the answer. The level is
+  /// bounded (the UI shows one hint card) and repeat taps collapse into one
+  /// network signal via the repository throttle.
   void requestSupportHint() {
+    if (state.supportLevel >= 2) return;
     state = state.copyWith(supportLevel: state.supportLevel + 1);
     ref.read(studentRepositoryProvider).supportSignal('hint_used');
   }
@@ -107,17 +155,37 @@ class PracticeController extends _$PracticeController {
     if (id == null || state.submitting) return;
     state = state.copyWith(submitting: true, error: null);
     try {
-      final result =
-          await ref.read(studentRepositoryProvider).submitAssessment(
-                assessmentId: id,
-                answers: state.answers,
-              );
+      final result = await ref
+          .read(studentRepositoryProvider)
+          .submitAssessment(assessmentId: id, answers: state.answers);
+      if (!ref.mounted || state.assessmentId != id) return;
       state = state.copyWith(submitting: false, result: result);
-      // Refresh progress-dependent providers.
+      // Refresh progress-dependent providers, scoped to the practiced
+      // material so other classrooms do not refetch in a storm.
       ref.invalidate(studentHomeProvider);
       ref.invalidate(studentProgressProvider);
-    } on ApiException catch (e) {
-      state = state.copyWith(submitting: false, error: e.message);
+      ref.invalidate(
+        studentLearningPathProvider(
+          classroomId: state.classroomId,
+          supplementary: state.childScope,
+        ),
+      );
+      if (state.materialId != null && state.materialId!.isNotEmpty) {
+        ref.invalidate(
+          studentSkillBundleProvider(
+            skillId: state.skillId ?? '',
+            materialId: state.materialId!,
+            classroomId: state.classroomId,
+            supplementary: state.childScope,
+          ),
+        );
+      }
+    } catch (_) {
+      if (!ref.mounted || state.assessmentId != id) return;
+      state = state.copyWith(
+        submitting: false,
+        error: "We couldn't save your results. Please try again.",
+      );
     }
   }
 

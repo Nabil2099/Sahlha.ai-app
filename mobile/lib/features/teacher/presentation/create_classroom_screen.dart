@@ -15,8 +15,7 @@ class CreateClassroomScreen extends ConsumerStatefulWidget {
       _CreateClassroomScreenState();
 }
 
-class _CreateClassroomScreenState
-    extends ConsumerState<CreateClassroomScreen> {
+class _CreateClassroomScreenState extends ConsumerState<CreateClassroomScreen> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _subject = TextEditingController();
@@ -35,12 +34,13 @@ class _CreateClassroomScreenState
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      final room =
-          await ref.read(classroomRepositoryProvider).create(
-                name: _name.text.trim(),
-                subject: _subject.text.trim(),
-                gradeLevel: _grade.text.trim(),
-              );
+      final room = await ref
+          .read(classroomRepositoryProvider)
+          .create(
+            name: _name.text.trim(),
+            subject: _subject.text.trim(),
+            gradeLevel: _grade.text.trim(),
+          );
       ref.invalidate(classroomListProvider);
       if (mounted) context.go('/teacher/classrooms/${room.id}');
     } on ApiException catch (e) {
@@ -66,18 +66,19 @@ class _CreateClassroomScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Create a classroom',
-                    style: text.headlineSmall),
+                Text('Create a classroom', style: text.headlineSmall),
                 const SizedBox(height: SahlhaSpacing.sm),
                 Text(
-                    'You’ll get a short join code to share with your students.',
-                    style: text.bodyMedium),
+                  'You’ll get a short join code to share with your students.',
+                  style: text.bodyMedium,
+                ),
                 const SizedBox(height: SahlhaSpacing.xl),
                 TextFormField(
                   controller: _name,
                   textCapitalization: TextCapitalization.words,
-                  decoration:
-                      const InputDecoration(labelText: 'Classroom name'),
+                  decoration: const InputDecoration(
+                    labelText: 'Classroom name',
+                  ),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Required' : null,
                 ),
@@ -86,8 +87,9 @@ class _CreateClassroomScreenState
                   controller: _subject,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
-                      labelText: 'Subject',
-                      hintText: 'Math, Science, English…'),
+                    labelText: 'Subject',
+                    hintText: 'Math, Science, English…',
+                  ),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Required' : null,
                 ),
@@ -96,14 +98,16 @@ class _CreateClassroomScreenState
                   controller: _grade,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
-                      labelText: 'Grade level',
-                      hintText: 'Grade 5'),
+                    labelText: 'Grade level',
+                    hintText: 'Grade 5',
+                  ),
                 ),
                 const SizedBox(height: SahlhaSpacing.xl),
                 SahlhaPrimaryButton(
-                    label: 'Create classroom',
-                    loading: _busy,
-                    onPressed: _submit),
+                  label: 'Create classroom',
+                  loading: _busy,
+                  onPressed: _submit,
+                ),
               ],
             ),
           ),
