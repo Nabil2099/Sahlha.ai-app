@@ -4,6 +4,8 @@ from sahlha.app.agent.prompts import build_skill_explanation_prompt, build_lesso
 from sahlha.app.agent.schemas import SkillExplanation, LessonExplanationModel
 from sahlha.app.agent.tools import rag_tools, audio_tools, image_tools, skill_tools
 from sahlha.app.database.repositories import repositories as repo
+from sahlha.app.agent.tools import content_tools
+from sahlha.app.agent.learning_content import LearningContent, structured_fallback
 
 
 def _ensure_media(db, row, image_call, audio_call, **scope):
@@ -46,18 +48,27 @@ def explain_skill(db, *, course_id, lesson_id, skill_id, force=False):
     skill = skill_tools.serialize_skill(row)
     backend = "existing"
     if force or not row.explanation:
-        chunks = rag_tools.retrieve_relevant_material(db,
-            f"{row.name} {row.description} {' '.join(row.key_concepts or [])}",
-            top_k=5, course_id=course_id, lesson_id=lesson_id)
+        chunks = content_tools.skill_evidence(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id,
+            query=f"{row.name} {row.learning_objective}")
+        if not chunks and not row.evidence_chunk_ids:
+            # Explicit compatibility path for pre-upgrade skills without evidence links.
+            chunks = rag_tools.retrieve_relevant_material(db, f"{row.name} {row.description}",
+                top_k=5, course_id=course_id, lesson_id=lesson_id)
         if not chunks:
-            chunks = rag_tools.retrieve_lesson(db, course_id, lesson_id, top_k=5)
+            raise ValueError("No source evidence is available for this skill.")
         system, user = build_skill_explanation_prompt(course_id=course_id, lesson_id=lesson_id,
                                                        skill=skill, context_chunks=chunks)
+        data = {}
         try:
             data, backend = complete_json(system, user)
             text = SkillExplanation(explanation=data.get("explanation")).explanation
         except Exception as exc:
             text, backend = fallback_explanation(skill, chunks), f"fallback({type(exc).__name__})"
+        try:
+            content = LearningContent.model_validate(data.get('learning_content', {})).model_dump()
+        except Exception:
+            content = structured_fallback(skill, chunks, text)
+        row.learning_content = content
         repo.set_skill_explanation(db, row, text)
     media = ensure_skill_media(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     return {"skill": skill_tools.serialize_skill(row), "backend": backend, "media": media}
@@ -74,15 +85,22 @@ def explain_lesson(db, *, course_id, lesson_id, force=False):
     row = repo.get_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id)
     backend = "existing"
     if force or row is None or not row.explanation:
-        chunks = rag_tools.retrieve_lesson(db, course_id, lesson_id, top_k=8)
+        content_map, _ = content_tools.build_content_map(db, course_id, lesson_id)
+        chunks = content_tools.overview_sections(content_map)
         names = [s.name for s in repo.list_skills(db, course_id=course_id, lesson_id=lesson_id)]
         system, user = build_lesson_explanation_prompt(course_id=course_id, lesson_id=lesson_id,
                                                        context_chunks=chunks, skill_names=names)
         try:
+            if sum(len(c["text"]) + 100 for c in chunks) > 12000:
+                raise ValueError("Use complete extractive overview for long lesson")
             data, backend = complete_json(system, user)
             payload = LessonExplanationModel(**data).model_dump()
         except Exception as exc:
             payload = fallback_lesson_explanation(chunks, course_id, lesson_id, names)
+            if chunks:
+                payload['title'] = content_map['title']
+                payload['explanation'] = '\n\n'.join(c['text'] for c in chunks)
+                payload['key_concepts'] = content_map.get('concepts') or names
             backend = f"fallback({type(exc).__name__})"
         row = repo.upsert_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id, **payload)
     media = ensure_lesson_media(db, course_id=course_id, lesson_id=lesson_id)

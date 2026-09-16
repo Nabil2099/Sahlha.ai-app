@@ -89,6 +89,8 @@ class LearningMaterial(Base):
 
     __tablename__ = "learning_materials"
 
+    quality_signals: Mapped[dict] = mapped_column(JSON, default=dict)
+
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     uploader_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True)
     source_type: Mapped[str] = mapped_column(String(16), default="teacher")  # teacher|parent
@@ -133,6 +135,9 @@ class StudentLearningProfile(Base):
 class Document(Base):
     __tablename__ = "documents"
 
+    blocks: Mapped[list] = mapped_column(JSON, default=list)
+    extraction_quality: Mapped[dict] = mapped_column(JSON, default=dict)
+
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     filename: Mapped[str] = mapped_column(String(512))
     course_id: Mapped[str] = mapped_column(String(128), default="general")
@@ -146,6 +151,11 @@ class Document(Base):
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
+
+    section: Mapped[str] = mapped_column(Text, default="")
+    section_id: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(Text, default="")
+    block_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     document_id: Mapped[str] = mapped_column(String(32), ForeignKey("documents.id"))
@@ -187,6 +197,15 @@ class Skill(Base):
     __tablename__ = "skills"
     __table_args__ = (UniqueConstraint("course_id", "lesson_id", "skill_id", name="uq_lesson_skill"),)
 
+    extraction_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    learning_objective: Mapped[str] = mapped_column(Text, default="")
+    prerequisites: Mapped[list] = mapped_column(JSON, default=list)
+    misconceptions: Mapped[list] = mapped_column(JSON, default=list)
+    difficulty: Mapped[str] = mapped_column(Text, default="")
+    source_section_ids: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_chunk_ids: Mapped[list] = mapped_column(JSON, default=list)
+    learning_content: Mapped[dict] = mapped_column(JSON, default=dict)
+
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     course_id: Mapped[str] = mapped_column(String(128), default="general")
     lesson_id: Mapped[str] = mapped_column(String(128), default="lesson_1")
@@ -225,6 +244,11 @@ class QuestionBank(Base):
 
 class Question(Base):
     __tablename__ = "questions"
+
+    evidence_chunk_ids: Mapped[list] = mapped_column(JSON, default=list)
+    learning_objective: Mapped[str] = mapped_column(Text, default="")
+    tested_concept: Mapped[str] = mapped_column(Text, default="")
+    verification: Mapped[dict] = mapped_column(JSON, default=dict)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     question_bank_id: Mapped[str] = mapped_column(String(32), ForeignKey("question_banks.id"))
@@ -313,3 +337,12 @@ class BankVersionCounter(Base):
     lesson_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     skill_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     version: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LessonContentMap(Base):
+    __tablename__ = "lesson_content_maps"
+    __table_args__ = (UniqueConstraint("course_id", "lesson_id", name="uq_content_map_scope"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    course_id: Mapped[str] = mapped_column(String(128), index=True)
+    lesson_id: Mapped[str] = mapped_column(String(128), index=True)
+    content: Mapped[dict] = mapped_column(JSON, default=dict)

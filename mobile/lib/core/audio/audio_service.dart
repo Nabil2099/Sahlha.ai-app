@@ -33,10 +33,16 @@ class AudioService {
     _playerSubscription = _player.playerStateStream.listen((state) {
       if (_loading || _activeUrl == null || _disposed) return;
       if (state.processingState == ProcessingState.completed) {
-        _emit(ReadAloudState.paused);
+        _emit(ReadAloudState.idle);
         return;
       }
-      _emit(state.playing ? ReadAloudState.playing : ReadAloudState.paused);
+      _emit(
+        state.processingState == ProcessingState.buffering
+            ? ReadAloudState.loading
+            : state.playing
+            ? ReadAloudState.playing
+            : ReadAloudState.paused,
+      );
     });
   }
 
@@ -73,9 +79,10 @@ class AudioService {
   }
 
   void _startPlayback() {
+    final request = _request;
     unawaited(
       _player.play().catchError((Object error) {
-        if (!_disposed) _reset();
+        if (!_disposed && request == _request) _reset();
       }),
     );
   }
@@ -108,7 +115,11 @@ class AudioService {
     // Single-flight: a second tap for the same explanation while it is
     // still preparing (or already playing) must not fire another request.
     if (_loading && _activeUrl == url) return null;
-    if (!_loading && _activeUrl == url && _player.playing) return null;
+    if (!_loading && _activeUrl == url) {
+      if (_state == ReadAloudState.playing) return null;
+      await resume();
+      return null;
+    }
     final request = ++_request;
     _loading = true;
     _activeUrl = url;

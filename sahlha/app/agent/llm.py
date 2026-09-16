@@ -79,47 +79,46 @@ def _extract_json_array(text: str) -> list:
 
 def fallback_questions(context_chunks: list[dict], skill_id: str, n: int = 8,
                        feedback: str = "") -> list[dict]:
-    """Deterministic grounded generator: builds MCQs from chunk sentences."""
-    import re as _re
+    """Source-completion MCQs with real lesson terms and explicit evidence.
 
-    sentences: list[str] = []
-    for c in context_chunks:
-        for s in _re.split(r"(?<=[.!?])\s+", c.get("text", "")):
-            s = s.strip()
-            if len(s.split()) >= 6:
-                sentences.append((s, c.get("skill_id") or skill_id))
-    if not sentences:
-        sentences = [("The lesson introduces key concepts and examples.", skill_id)]
-
-    wants_hard = "hard" in feedback.lower() or "difficult" in feedback.lower() or "practical" in feedback.lower()
-    difficulties = (["medium", "hard", "medium", "hard"] if wants_hard else ["easy", "medium", "easy", "medium", "hard", "medium"])
-    out: list[dict] = []
-    for i in range(n):
-        sent, sk = sentences[i % len(sentences)]
-        words = sent.split()
-        # Blank-out a keyword for the stem
-        keyword = max([w.strip(",.;:()\"'") for w in words if len(w) > 4], key=len, default="concept")
-        stem = sent.replace(keyword, "_____", 1) if keyword in sent else sent
-        question = f"Based on the lesson, complete the statement: {stem}"
-        correct = f"{keyword} — as stated in the lesson"
-        distractors = [
-            "It is unrelated to the lesson topic",
-            "The lesson explicitly contradicts this",
-            "This is never mentioned in the material",
-        ]
-        options = [correct] + distractors
-        # Deterministic rotation so correct index varies
-        rot = i % 4
-        options = options[rot:] + options[:rot]
-        out.append({
-            "skill_id": sk,
-            "type": "multiple_choice",
-            "question": question,
-            "options": options,
-            "correct_answer": options.index(correct),
-            "explanation": f"Grounded in lesson text: \"{sent[:160]}\"",
-            "difficulty": difficulties[i % len(difficulties)],
-        })
+    Each item has a mechanically checkable answer: filling the blank reproduces
+    a cited sentence. No fabricated facts or arbitrary difficulty inflation.
+    """
+    stop = {'the', 'and', 'with', 'from', 'this', 'that', 'when', 'then', 'only',
+            'into', 'which', 'what', 'have', 'does', 'will', 'until', 'another'}
+    out, seen = [], set()
+    for chunk in context_chunks:
+        sentences = [x.strip() for x in re.split(r'(?<=[.!?])\s+|\n', chunk.get('text', '')) if len(x.split()) >= 5]
+        vocabulary = list(dict.fromkeys(re.findall(r'\b[A-Za-z][A-Za-z_-]{2,}\b', chunk.get('text', ''))))
+        vocabulary = [w for w in vocabulary if w.lower() not in stop]
+        for sentence in sentences:
+            words = sorted(set(re.findall(r'\b[A-Za-z][A-Za-z_-]{2,}\b', sentence)), key=lambda w: (-len(w), w))
+            for answer in words:
+                if answer.lower() in stop:
+                    continue
+                alternatives = [w for w in vocabulary if w.lower() != answer.lower()
+                                and not re.search(r'\b'+re.escape(w)+r'\b', sentence, re.I)]
+                if len(alternatives) < 3:
+                    alternatives += [w for w in vocabulary if w.lower() != answer.lower() and w not in alternatives]
+                alternatives = list(dict.fromkeys(w.lower() for w in alternatives))[:3]
+                if len(alternatives) < 3:
+                    continue
+                stem = re.sub(r'\b'+re.escape(answer)+r'\b', '_____', sentence, count=1)
+                question = 'Complete the source statement with the exact lesson term: ' + stem
+                if question in seen:
+                    continue
+                seen.add(question)
+                options = [answer] + alternatives
+                rotation = len(out) % 4
+                options = options[rotation:] + options[:rotation]
+                out.append({'skill_id': skill_id, 'type': 'multiple_choice', 'question': question,
+                    'options': options, 'correct_answer': options.index(answer),
+                    'explanation': sentence, 'difficulty': 'easy',
+                    'evidence_chunk_ids': [chunk['chunk_id']] if chunk.get('chunk_id') else [],
+                    'learning_objective': chunk.get('learning_objective', f'Explain {skill_id.replace("_", " ")}.'),
+                    'tested_concept': answer, 'verification': {'method': 'source_completion', 'source_quote': sentence}})
+                if len(out) >= n:
+                    return out
     return out
 
 
@@ -184,27 +183,9 @@ def _top_terms(sentences: list[str], k: int = 6) -> list[str]:
 
 
 def fallback_skills(context_chunks: list[dict], lesson_id: str, max_skills: int = 6) -> list[dict]:
-    """Deterministic grounded splitter: one skill per ~2 sentences (agent-side topic count)."""
-    sentences = _sentences(context_chunks)
-    if not sentences:
-        return [{"skill_id": f"{lesson_id}_basics", "name": "Lesson basics",
-                 "description": "Core concepts of the lesson.", "key_concepts": []}]
-    k = max(1, min(max_skills, (len(sentences) + 1) // 2))
-    size = max(1, (len(sentences) + k - 1) // k)
-    out: list[dict] = []
-    for i in range(k):
-        part = sentences[i * size:(i + 1) * size]
-        if not part:
-            break
-        terms = _top_terms(part)
-        slug = re.sub(r"[^a-z0-9]+", "_", (terms[0] if terms else f"part{i + 1}").lower()).strip("_")
-        out.append({
-            "skill_id": f"{lesson_id}__{slug}"[:120],
-            "name": f"{terms[0].capitalize() if terms else f'Part {i + 1}'} ({lesson_id})",
-            "description": part[0][:220],
-            "key_concepts": terms[:5],
-        })
-    return out
+    """Compatibility entry point using the evidence-backed topic mapper."""
+    from sahlha.app.agent.tools.content_tools import fallback_topics, validate_skills
+    return validate_skills(fallback_topics(context_chunks), context_chunks, max_skills)[0]
 
 
 def fallback_explanation(skill: dict, context_chunks: list[dict]) -> str:

@@ -7,6 +7,7 @@ import '../../../core/widgets/sahlha_widgets.dart'
     show SahlhaAppBar, ErrorState, EmptyState, SahlhaPrimaryButton;
 import '../data/student_repository.dart';
 import 'journey_presentation.dart';
+import 'widgets/engagement.dart';
 import 'widgets/learning_journey.dart';
 
 class StudentProgressScreen extends ConsumerWidget {
@@ -46,20 +47,7 @@ class StudentProgressScreen extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.all(24),
                 physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  const JourneyEyebrow('YOUR PROGRESS, AT YOUR PACE'),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Understanding takes practice.',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Look at what you’re learning. There’s no race to finish.',
-                  ),
-                  const SizedBox(height: 24),
-                  for (final room in rooms) _ProgressRoom(room: room),
-                ],
+                children: [for (final room in rooms) _ProgressRoom(room: room)],
               ),
             );
           },
@@ -77,88 +65,128 @@ class _ProgressRoom extends StatelessWidget {
     final journey = LearningJourney.fromJson({
       'units': room['units'] ?? [],
     }, subject: room['subject']?.toString() ?? '');
-    final summary = room['summary'] as Map? ?? {};
-    final mastered = (summary['mastered'] as num?)?.toInt() ?? journey.mastered;
-    final total = journey.total;
+    final steps = journey.units.expand((u) => u.steps).toList();
     final text = Theme.of(context).textTheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: SahlhaColors.line),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          studentTitle(
+            room['subject']?.toString() ?? '',
+            fallback: 'Your learning',
+          ),
+          style: text.titleMedium,
+        ),
+        const SizedBox(height: 16),
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              studentTitle(
-                room['subject']?.toString() ?? '',
-                fallback: 'Your learning',
+            for (final status in [
+              (
+                'mastered',
+                'Mastered',
+                const Color(0xFFDEFBE5),
+                const Color(0xFF138A43),
               ),
-              style: text.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text('$mastered of $total skills mastered'),
-            const SizedBox(height: 14),
-            UnitProgressBar(completed: mastered, total: total),
-            const SizedBox(height: 12),
-            for (final unit in journey.units)
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: Text(unit.title),
-                subtitle: Text(
-                  'Unit ${unit.number} · ${unit.mastered} of ${unit.steps.length} mastered',
+              (
+                'developing',
+                'Developing',
+                const Color(0xFFFFF3D5),
+                const Color(0xFF9C6900),
+              ),
+              (
+                'needs_practice',
+                'Needs Practice',
+                const Color(0xFFFFE8EC),
+                const Color(0xFFB63752),
+              ),
+            ])
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: status.$3,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '${steps.where((s) => s.skill.state == status.$1).length}',
+                        style: text.headlineMedium?.copyWith(color: status.$4),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        status.$2,
+                        textAlign: TextAlign.center,
+                        style: text.labelSmall,
+                      ),
+                    ],
+                  ),
                 ),
-                children: [
-                  for (final step in unit.steps)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        step.skill.state == 'mastered'
-                            ? Icons.check_circle_rounded
-                            : Icons.menu_book_outlined,
-                        color: SahlhaColors.tealDark,
-                      ),
-                      title: Text(step.title),
-                      subtitle: Text(switch (step.skill.state) {
-                        'mastered' => 'Mastered',
-                        'developing' => 'Growing in confidence',
-                        'needs_practice' => 'A little more practice',
-                        _ => 'Waiting to be explored',
-                      }),
-                    ),
-                ],
-              ),
-            TextButton.icon(
-              onPressed: () => context.go(
-                learningLocation(classroomId: room['classroom_id']?.toString()),
-              ),
-              icon: const Icon(Icons.route_outlined),
-              label: const Text('Visit this learning path'),
-            ),
-            if ((room['grades'] as List? ?? []).isNotEmpty)
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: const Text('Recent practice'),
-                children: [
-                  for (final grade
-                      in (room['grades'] as List).whereType<Map>().take(3))
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Practice session'),
-                      trailing: Text(
-                        '${(((grade['score'] as num? ?? 0) * 100).round())}%',
-                      ),
-                    ),
-                ],
               ),
           ],
         ),
-      ),
+        const SizedBox(height: 26),
+        Text('Practiced skills', style: text.titleMedium),
+        const SizedBox(height: 10),
+        for (final step in steps.where((s) => s.skill.attempted > 0).take(5))
+          Card(
+            elevation: 0,
+            color: Colors.white,
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: SahlhaColors.masterySoft(step.skill.state),
+                child: Icon(
+                  step.skill.state == 'mastered'
+                      ? Icons.arrow_upward_rounded
+                      : Icons.auto_stories_outlined,
+                  color: SahlhaColors.mastery(step.skill.state),
+                ),
+              ),
+              title: Text(step.title),
+              subtitle: Text(switch (step.skill.state) {
+                'mastered' => 'Mastered',
+                'developing' => 'Keep building your understanding',
+                _ => 'Keep going',
+              }),
+              onTap: () => context.push(
+                lessonLocation(
+                  step,
+                  classroomId: room['classroom_id']?.toString(),
+                ),
+              ),
+            ),
+          ),
+        if (!steps.any((s) => s.skill.attempted > 0))
+          const Text('Your progress will appear after your first practice.'),
+        if ((room['grades'] as List? ?? []).isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('Recently practiced', style: text.titleMedium),
+          for (final grade in (room['grades'] as List).whereType<Map>().take(3))
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.history, color: SahlhaColors.tealDark),
+              title: const Text('Practice session'),
+              subtitle: Text(relativeDayLabel(grade['created_at']?.toString())),
+              trailing: Text(
+                '${((grade['score'] as num? ?? 0) * 100).round()}%',
+              ),
+            ),
+        ],
+        TextButton.icon(
+          onPressed: () => context.go(
+            learningLocation(classroomId: room['classroom_id']?.toString()),
+          ),
+          icon: const Icon(Icons.route_outlined),
+          label: const Text('Visit this learning path'),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 }

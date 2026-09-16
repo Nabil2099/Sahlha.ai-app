@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class GeneratedQuestion(BaseModel):
+    evidence_chunk_ids: list[str] = Field(default_factory=list)
+    learning_objective: str = ""
+    tested_concept: str = ""
+    verification: dict = Field(default_factory=dict)
     skill_id: str = "general"
     type: Literal["multiple_choice", "short_answer"] = "multiple_choice"
     question: str = Field(min_length=1)
@@ -17,6 +21,10 @@ class GeneratedQuestion(BaseModel):
 
     def to_record(self) -> dict:
         return {
+            "evidence_chunk_ids": self.evidence_chunk_ids,
+            "learning_objective": self.learning_objective,
+            "tested_concept": self.tested_concept,
+            "verification": self.verification,
             "skill_id": self.skill_id,
             "question_type": self.type,
             "question_text": self.question,
@@ -43,6 +51,12 @@ class QuestionList(BaseModel):
 
 
 class ExtractedSkill(BaseModel):
+    learning_objective: str = ""
+    prerequisites: list[str] = Field(default_factory=list)
+    misconceptions: list[str] = Field(default_factory=list)
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    source_section_ids: list[str] = Field(default_factory=list)
+    evidence_chunk_ids: list[str] = Field(default_factory=list)
     skill_id: str
     name: str = ""
     description: str = ""

@@ -149,7 +149,7 @@ class _JourneyContentState extends ConsumerState<JourneyContent> {
                       padding: const EdgeInsets.only(bottom: 14),
                       child: Text(studentTitle(widget.subject)),
                     ),
-                  LearningUnitHeader(unit: unit),
+                  LearningUnitHeader(unit: unit, subject: widget.subject),
                   if (journey.units.length > 1)
                     Align(
                       alignment: Alignment.centerRight,
@@ -180,7 +180,6 @@ class _JourneyContentState extends ConsumerState<JourneyContent> {
                       openCheckpoint: (step) => context.push(
                         practiceLocation(
                           materialId: step.materialId,
-                          skillId: step.skill.skillId,
                           classroomId: widget.classroomId,
                           supplementary: widget.supplementary,
                           mode: 'checkpoint',

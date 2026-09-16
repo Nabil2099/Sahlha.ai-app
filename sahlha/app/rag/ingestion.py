@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from sahlha.app.config import settings
 from sahlha.app.database.repositories import repositories as repo
 from sahlha.app.rag import vectorstore
-from sahlha.app.rag.chunking import chunk_text
+from dataclasses import asdict
+from sahlha.app.rag.chunking import chunk_blocks
 from sahlha.app.rag.ocr import extract_document_text
 
 
@@ -26,7 +27,9 @@ def ingest_upload(db: Session, *, file_bytes: bytes, filename: str,
         fh.write(file_bytes)
 
     extracted = extract_document_text(file_bytes, filename)
-    chunks = chunk_text(extracted.text, chunk_size=settings.chunk_size,
+    doc.blocks = [asdict(b) for b in extracted.blocks]
+    doc.extraction_quality = extracted.quality
+    chunks = chunk_blocks(extracted.blocks, chunk_size=settings.chunk_size,
                         chunk_overlap=settings.chunk_overlap, course_id=course_id,
                         lesson_id=lesson_id, skill_id=skill_id, document_id=doc.id)
     if chunks:
@@ -42,6 +45,8 @@ def ingest_upload(db: Session, *, file_bytes: bytes, filename: str,
         "course_id": course_id,
         "lesson_id": lesson_id,
         "skill_id": skill_id,
+        "quality": extracted.quality,
+        "warnings": extracted.warnings,
         "method": extracted.method,
         "is_scanned": extracted.is_scanned,
         "num_pages": extracted.num_pages,

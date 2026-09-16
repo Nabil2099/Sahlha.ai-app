@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
-data/
+/data/
 .pytest_cache/
 edits.md
+edits2.md

@@ -11,13 +11,33 @@ class StudentCanvas extends StatelessWidget {
   const StudentCanvas({super.key, required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.topCenter,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 620),
-      child: child,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+    );
+    return Theme(
+      data: theme.copyWith(
+        filledButtonTheme: FilledButtonThemeData(
+          style: theme.filledButtonTheme.style?.copyWith(
+            shape: WidgetStatePropertyAll(shape),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: theme.outlinedButtonTheme.style?.copyWith(
+            shape: WidgetStatePropertyAll(shape),
+          ),
+        ),
+      ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class JourneyEyebrow extends StatelessWidget {
@@ -87,44 +107,23 @@ class LearningMark extends StatelessWidget {
 }
 
 class LearningUnitHeader extends StatelessWidget {
-  const LearningUnitHeader({super.key, required this.unit});
+  const LearningUnitHeader({super.key, required this.unit, this.subject = ''});
   final JourneyUnit unit;
+
+  /// Free-text subject used for the meaningful unit visual. Empty falls
+  /// back to the book mark.
+  final String subject;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: SahlhaColors.surfaceRaised,
-      borderRadius: BorderRadius.circular(26),
-      border: Border.all(color: SahlhaColors.borderSubtle),
-      boxShadow: SahlhaShadows.soft,
-    ),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  JourneyEyebrow('UNIT ${unit.number}'),
-                  const SizedBox(height: 6),
-                  Text(
-                    unit.title,
-                    style: Theme.of(context).textTheme.titleLarge
-                        ?.copyWith(height: 1.2),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            const LearningMark(size: 52),
-          ],
-        ),
-        const SizedBox(height: 16),
+        Text(unit.title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 5),
         Text(
-          '${unit.mastered} of ${unit.steps.length} skills mastered',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: _ink),
+          'Unit ${unit.number} / ${unit.mastered} of ${unit.steps.length} mastered',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 10),
         UnitProgressBar(completed: unit.mastered, total: unit.steps.length),
@@ -138,121 +137,127 @@ class CurrentSkillCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.onContinue,
-    this.contextLabel = 'CURRENT SKILL',
+    this.contextLabel = 'Continue learning',
     this.subtitle = '',
     this.started = false,
     this.onTap,
     this.progress,
+    this.effort,
+    this.questions = 0,
+    this.minutes,
   });
-  final String title;
-  final String contextLabel;
-  final String subtitle;
+  final String title, contextLabel, subtitle;
   final bool started;
   final VoidCallback onContinue;
-
-  /// Makes the whole card afford its primary action. Falls back to
-  /// [onContinue] when null.
   final VoidCallback? onTap;
-
-  /// Optional 0..1 progress shown as a quiet bar above the button.
   final double? progress;
-
+  final String? effort;
+  final int questions;
+  final int? minutes;
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: '$contextLabel: $title',
+  Widget build(BuildContext context) => Material(
+    color: const Color(0xFFE5F6F3),
+    borderRadius: BorderRadius.circular(22),
     child: InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        (onTap ?? onContinue)();
-      },
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: _teal,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: _teal.withValues(alpha: .14),
-              blurRadius: 18,
-              offset: const Offset(0, 7),
-            ),
-          ],
-        ),
+      onTap: onTap ?? onContinue,
+      borderRadius: BorderRadius.circular(22),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: JourneyEyebrow(
+                  child: Text(
                     contextLabel,
-                    color: SahlhaColors.sunSoft,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
                 const Icon(
-                  Icons.play_arrow_rounded,
-                  color: SahlhaColors.sunSoft,
-                  size: 32,
+                  Icons.subdirectory_arrow_left,
+                  size: 18,
+                  color: _teal,
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                height: 1.2,
-              ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF009D98),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: const Icon(
+                    Icons.auto_stories_outlined,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      if (subtitle.isNotEmpty)
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.play_circle_fill, color: _teal, size: 32),
+              ],
             ),
-            if (subtitle.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodyMedium
-                    ?.copyWith(color: Colors.white, height: 1.5),
-              ),
-            ],
-            if (progress != null) ...[
+            if (minutes != null || questions > 0) ...[
               const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress!.clamp(0, 1),
-                  minHeight: 6,
-                  color: SahlhaColors.sunSoft,
-                  backgroundColor: Colors.white.withValues(alpha: .25),
-                ),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  if (minutes != null)
+                    _MetaPill(Icons.headphones_outlined, '~$minutes min'),
+                  if (questions > 0)
+                    _MetaPill(
+                      Icons.assignment_outlined,
+                      '$questions questions',
+                    ),
+                ],
               ),
             ],
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: SahlhaColors.sunSoft,
-                  foregroundColor: _ink,
-                  minimumSize: const Size(48, 54),
-                ),
-                onPressed: onContinue,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: Text(started ? 'Continue' : 'Start learning'),
-                    ),
-                    const SizedBox(width: 10),
-                    const Icon(Icons.arrow_forward_rounded, size: 20),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
+    ),
+  );
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill(this.icon, this.label);
+  final IconData icon;
+  final String label;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .85),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: _teal),
+        const SizedBox(width: 6),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     ),
   );
 }
@@ -286,95 +291,83 @@ class LearningPathNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Every state — including current — renders as a node. The large
-    // detail block below the selected node carries the call to action,
-    // so the path stays fully interactive instead of hardcoding one
-    // oversized card for the recommended skill.
     final completed = step.state == JourneyState.completed;
     final locked = step.state == JourneyState.locked;
-    final Color fill = completed
-        ? _teal
-        : selected
-        ? SahlhaColors.surfaceTealSoft
-        : locked
-        ? const Color(0xFFF0EBE3)
-        : Colors.white;
+    final current = step.state == JourneyState.current;
     return Semantics(
-      button: true,
-      enabled: true,
       selected: selected,
-      label: '${step.title}, ${step.state.name}${selected ? ', selected' : ''}',
+      button: true,
+      label: '${step.title}, ${step.state.name}',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 280),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: selected ? SahlhaShadows.soft : null,
+          ),
+          child: Row(
             children: [
               AnimatedContainer(
                 duration: MediaQuery.disableAnimationsOf(context)
                     ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                width: 66,
-                height: 62,
+                    : const Duration(milliseconds: 300),
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: fill,
-                  borderRadius: BorderRadius.circular(22),
+                  shape: BoxShape.circle,
+                  color: completed
+                      ? const Color(0xFF009F98)
+                      : current
+                      ? SahlhaColors.sun
+                      : const Color(0xFFF4F5F6),
                   border: Border.all(
-                    color: locked && !selected ? SahlhaColors.line : _teal,
-                    width: selected ? 3 : (locked ? 1 : 2),
+                    color: selected || current
+                        ? _teal
+                        : completed
+                        ? const Color(0xFFBDEAE1)
+                        : const Color(0xFFDEE2E5),
+                    width: 2,
                   ),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: _teal.withValues(alpha: .22),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : locked
-                      ? null
-                      : [
-                          BoxShadow(
-                            color: _teal.withValues(alpha: .08),
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
                 ),
                 child: Icon(
                   completed
                       ? Icons.check_rounded
                       : locked
                       ? Icons.lock_outline_rounded
-                      : Icons.menu_book_rounded,
-                  size: 28,
+                      : Icons.lightbulb_outline_rounded,
                   color: completed
                       ? Colors.white
-                      : locked && !selected
-                      ? SahlhaColors.muted
-                      : _teal,
+                      : current
+                      ? const Color(0xFF956300)
+                      : _ink,
+                  size: 24,
                 ),
               ),
-              const SizedBox(height: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 200),
-                child: Text(
-                  step.title,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: locked && !selected ? SahlhaColors.muted : _ink,
-                    fontWeight: selected ? FontWeight.w800 : null,
-                  ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      step.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    SkillStatusIndicator(state: step.state),
+                    if (current && step.skill.practiceQuestions > 0)
+                      Text(
+                        '${step.skill.practiceQuestions} questions',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
                 ),
               ),
-              if (completed || locked || selected) ...[
-                const SizedBox(height: 3),
-                SkillStatusIndicator(state: step.state),
-              ],
             ],
           ),
         ),
@@ -414,7 +407,7 @@ class LearningPathSkillBlock extends StatelessWidget {
       JourneyState.current => (
         'YOUR NEXT STEP',
         'One small step. Take it at your pace.',
-        step.skill.attempted > 0 ? 'Continue' : 'Start skill',
+        'Continue',
         Icons.arrow_forward_rounded,
       ),
       JourneyState.available => (
@@ -434,11 +427,12 @@ class LearningPathSkillBlock extends StatelessWidget {
     };
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      margin: const EdgeInsets.only(left: 64),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: SahlhaColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: SahlhaColors.teal, width: 2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: SahlhaColors.tealSoft),
         boxShadow: SahlhaShadows.soft,
       ),
       child: Column(
@@ -458,8 +452,6 @@ class LearningPathSkillBlock extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(step.title, style: text.headlineSmall?.copyWith(height: 1.2)),
           const SizedBox(height: 6),
           Text(
             message,
@@ -468,7 +460,7 @@ class LearningPathSkillBlock extends StatelessWidget {
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
           if (cta != null)
             SizedBox(
               width: double.infinity,
@@ -476,7 +468,7 @@ class LearningPathSkillBlock extends StatelessWidget {
                 onPressed: onPrimary,
                 icon: Icon(ctaIcon, size: 20),
                 label: Text(cta),
-                style: FilledButton.styleFrom(minimumSize: const Size(48, 54)),
+                style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
               ),
             )
           else
@@ -507,14 +499,19 @@ class LearningPathConnector extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: SizedBox(
-      height: 40,
+      height: 20,
       width: double.infinity,
-      child: CustomPaint(
-        painter: _ConnectorPainter(from, to, switch (state) {
-          JourneyState.completed => _teal.withValues(alpha: .5),
-          JourneyState.current => const Color(0xFFD4A537),
-          _ => const Color(0xFFDDD8CE),
-        }),
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(
+          end: state == JourneyState.completed
+              ? _teal
+              : const Color(0xFFDDD8CE),
+        ),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 350),
+        builder: (_, color, _) =>
+            CustomPaint(painter: _ConnectorPainter(from, to, color ?? _teal)),
       ),
     ),
   );
@@ -526,8 +523,8 @@ class _ConnectorPainter extends CustomPainter {
   final Color color;
   @override
   void paint(Canvas canvas, Size size) {
-    final start = size.width * (.5 + from * .22);
-    final end = size.width * (.5 + to * .22);
+    const start = 33.0;
+    const end = 33.0;
     final path = Path()
       ..moveTo(start, 0)
       ..cubicTo(
@@ -542,7 +539,7 @@ class _ConnectorPainter extends CustomPainter {
       path,
       Paint()
         ..color = color
-        ..strokeWidth = 6
+        ..strokeWidth = 3
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round,
     );
@@ -553,42 +550,57 @@ class _ConnectorPainter extends CustomPainter {
       old.from != from || old.to != to || old.color != color;
 }
 
+/// A Quick Check on the path: a short, low-pressure revisit of recent
+/// steps once they have real attempts. Locked (null [onTap]) until then.
 class CheckpointNode extends StatelessWidget {
   const CheckpointNode({
     super.key,
     this.onTap,
-    this.title = 'Quick practice',
-    this.subtitle = 'A little pause to remember.',
+    this.title = 'Quick check',
+    this.subtitle = 'A short pause to remember.',
   });
   final VoidCallback? onTap;
   final String title, subtitle;
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => AnimatedContainer(
+    duration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 300),
     margin: const EdgeInsets.symmetric(vertical: 16),
     decoration: BoxDecoration(
-      color: SahlhaColors.surfaceWarm,
+      color: onTap == null ? const Color(0xFFF4F1FA) : const Color(0xFFECE4FF),
       borderRadius: BorderRadius.circular(22),
     ),
     child: ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       leading: Icon(
-        onTap == null ? Icons.lock_outline_rounded : Icons.extension_outlined,
-        color: _teal,
+        onTap == null ? Icons.lock_outline_rounded : Icons.flag_outlined,
+        color: const Color(0xFF7858D8),
       ),
       title: Text(title, style: Theme.of(context).textTheme.titleMedium),
       subtitle: Text(subtitle),
       trailing: onTap == null
           ? null
-          : const Icon(Icons.arrow_forward_rounded, color: _teal),
+          : const Icon(Icons.arrow_forward_rounded, color: Color(0xFF7858D8)),
       onTap: onTap,
     ),
   );
 }
 
 class MasteryNode extends StatelessWidget {
-  const MasteryNode({super.key, required this.ready, this.onTap});
+  const MasteryNode({
+    super.key,
+    required this.ready,
+    this.onTap,
+    this.mastered = 0,
+    this.total = 0,
+  });
   final bool ready;
   final VoidCallback? onTap;
+
+  /// Unit progress shown under the title (0/0 hides the line).
+  final int mastered;
+  final int total;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(22),
@@ -616,7 +628,11 @@ class MasteryNode extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          ready ? 'Revisit this unit in one practice session.' : 'Ready when these skills are mastered and practice is prepared.',
+          ready
+              ? 'Revisit this unit in one practice session.'
+              : total > 0
+              ? '$mastered of $total skills at mastery — keep going one step at a time.'
+              : 'Ready when these skills are mastered and practice is prepared.',
           textAlign: TextAlign.center,
         ),
         if (ready) ...[
@@ -696,9 +712,7 @@ class _LearningPathState extends State<LearningPath> {
     }
   }
 
-  double _offset(JourneyStep step) => step.state == JourneyState.current
-      ? 0
-      : const [-.7, 0.0, .7, 0.0][step.index % 4];
+  double _offset(JourneyStep step) => 0;
 
   void _select(JourneyStep step) {
     if (_selectedId == step.skill.skillId) return;
@@ -763,7 +777,7 @@ class _LearningPathState extends State<LearningPath> {
         Align(
           alignment: Alignment(off, 0),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 220),
+            constraints: const BoxConstraints(maxWidth: 620),
             child: LearningPathNode(
               step: step,
               selected: selected?.skill.skillId == step.skill.skillId,
@@ -804,8 +818,8 @@ class _LearningPathState extends State<LearningPath> {
         children.add(
           CheckpointNode(
             subtitle: unit.checkpointAfter(i + 1) == null
-                ? 'After practicing these three steps.'
-                : 'Revisit ${unit.checkpointAfter(i + 1)!.title}.',
+                ? 'After practicing these steps.'
+                : 'Mix your practiced skills.',
             onTap: unit.checkpointAfter(i + 1) == null
                 ? null
                 : () => widget.openCheckpoint(unit.checkpointAfter(i + 1)!),
@@ -839,7 +853,12 @@ class _LearningPathState extends State<LearningPath> {
               child: const Text('See what comes next'),
             ),
           ),
-        MasteryNode(ready: unit.masteryReady, onTap: widget.openMastery),
+        MasteryNode(
+          ready: unit.masteryReady,
+          onTap: widget.openMastery,
+          mastered: unit.mastered,
+          total: unit.steps.length,
+        ),
       ],
     );
   }

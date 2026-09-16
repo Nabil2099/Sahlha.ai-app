@@ -64,7 +64,11 @@ def student_home(student: m.User = Depends(deps.require_student),
                       "grade_level": room.grade_level, "current": path["current"],
                       "summary": path["summary"], "total_skills": path["total_skills"],
                       "mastered": path["mastered"],
-                      "recent_score": grades[0]["score"] if grades else None})
+                      "recent_score": grades[0]["score"] if grades else None,
+                      # Most recent submitted practice (ISO timestamp or null) so the
+                      # student home can show a truthful daily goal + comeback state
+                      # without an extra request. Additive; nothing else changes.
+                      "recent_practiced_at": grades[0]["created_at"] if grades else None})
     supp = plat.learning_path(db, student_id=student.id, child_scope=True)
     prof = prepo.get_profile(db, student.id)
     return {"classrooms": cards,
@@ -103,6 +107,9 @@ def get_skill(skill_id: str, material_id: str, classroom_id: str | None = None,
                                    lesson_id=lesson_id, skill_id=skill_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+    if classroom_id:
+        room = prepo.get_classroom(db, classroom_id)
+        bundle["subject"] = room.subject if room else ""
     return bundle
 
 
@@ -142,7 +149,7 @@ def start_assessment(req: StartPlatformAssessmentRequest,
     try:
         return plat.start_platform_assessment(
             db, student=student, classroom_id=req.classroom_id,
-            material_id=req.material_id, skill_id=req.skill_id, child_scope=req.child_scope)
+            material_id=req.material_id, skill_id=req.skill_id, child_scope=req.child_scope, checkpoint=req.checkpoint)
     except PermissionError as exc:
         raise HTTPException(404, str(exc))
     except ValueError as exc:

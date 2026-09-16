@@ -1,3 +1,7 @@
+import 'widgets/lesson_content.dart';
+import 'widgets/quick_check_intro.dart';
+import 'widgets/skill_completion.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,8 +18,7 @@ import '../../../core/widgets/sahlha_widgets.dart'
         InlineFeedback;
 import 'practice_controller.dart';
 import 'journey_presentation.dart';
-import 'widgets/learning_journey.dart'
-    show StudentCanvas, JourneyEyebrow, LearningMark;
+import 'widgets/learning_journey.dart' show StudentCanvas, JourneyEyebrow;
 
 class PracticeScreen extends ConsumerStatefulWidget {
   const PracticeScreen({
@@ -35,17 +38,21 @@ class PracticeScreen extends ConsumerStatefulWidget {
 
 class _PracticeScreenState extends ConsumerState<PracticeScreen> {
   final _answer = TextEditingController();
+  final _elapsed = Stopwatch();
+  bool _intro = true;
   final _scroll = ScrollController();
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
-      if (mounted) _start();
+      if (mounted && widget.mode != 'checkpoint') _start();
     });
   }
 
   Future<void> _start() async {
     _answer.clear();
+    _elapsed.stop();
+    _elapsed.reset();
     await ref
         .read(practiceControllerProvider.notifier)
         .start(
@@ -53,11 +60,16 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
           materialId: widget.materialId,
           skillId: widget.skillId,
           childScope: widget.supplementary,
+          checkpoint: widget.mode == 'checkpoint',
         );
+    if (mounted && ref.read(practiceControllerProvider).questions.isNotEmpty) {
+      _elapsed.start();
+    }
   }
 
   @override
   void dispose() {
+    _elapsed.stop();
     _answer.dispose();
     _scroll.dispose();
     super.dispose();
@@ -83,13 +95,16 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(practiceControllerProvider);
+    ref.listen(practiceControllerProvider.select((s) => s.result), (_, result) {
+      if (result != null) _elapsed.stop();
+    });
     final controller = ref.read(practiceControllerProvider.notifier);
     final text = Theme.of(context).textTheme;
     final title = widget.mode == 'mastery'
         ? 'Unit mastery check'
         : widget.mode == 'checkpoint'
-        ? 'Quick practice'
-        : 'A little practice';
+        ? 'Quick Check'
+        : 'Practice';
     return Scaffold(
       appBar: SahlhaAppBar(
         title: state.result != null ? 'Your next step' : title,
@@ -99,6 +114,17 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
         child: SafeArea(
           child: Builder(
             builder: (context) {
+              if (widget.mode == 'checkpoint' && _intro) {
+                return QuickCheckIntro(
+                  classroomId: widget.classroomId,
+                  materialId: widget.materialId,
+                  supplementary: widget.supplementary,
+                  onStart: () {
+                    setState(() => _intro = false);
+                    _start();
+                  },
+                );
+              }
               if (state.starting) {
                 return const LoadingState(
                   message: 'Preparing a little practice…',
@@ -145,10 +171,7 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(color: SahlhaColors.line),
                     ),
-                    child: Text(
-                      cleanStudentText(q.question),
-                      style: text.titleLarge?.copyWith(height: 1.55),
-                    ),
+                    child: LessonContent(source: q.question, question: true),
                   ),
                   const SizedBox(height: 20),
                   if (q.options.isNotEmpty)
@@ -165,7 +188,10 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                                   (check.correct && selected == i)),
                           onTap: check != null || state.checking
                               ? null
-                              : () => controller.answerCurrent(i),
+                              : () async {
+                                  controller.answerCurrent(i);
+                                  await controller.checkCurrent();
+                                },
                         ),
                       )
                   else
@@ -203,6 +229,14 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                         ),
                       ),
                     ),
+                  if (state.checking)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'Checking your answer...',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   if (state.supportLevel > 0 && check == null)
                     Container(
                       padding: const EdgeInsets.all(18),
@@ -216,11 +250,12 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                     ),
                   const SizedBox(height: 18),
                   if (check == null) ...[
-                    SahlhaPrimaryButton(
-                      label: 'Check answer',
-                      loading: state.checking,
-                      onPressed: valid ? controller.checkCurrent : null,
-                    ),
+                    if (q.options.isEmpty || state.error != null)
+                      SahlhaPrimaryButton(
+                        label: 'Check answer',
+                        loading: state.checking,
+                        onPressed: valid ? controller.checkCurrent : null,
+                      ),
                     TextButton.icon(
                       onPressed: controller.requestSupportHint,
                       icon: const Icon(
@@ -250,94 +285,13 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
     );
   }
 
-  Widget _feedback(BuildContext context, PracticeState state) {
-    final result = state.result!;
-    final text = Theme.of(context).textTheme;
-    final touched = result.results.map((r) => r.skillId).toSet();
-    final mastered = touched
-        .where((id) => result.masteryStates[id] == 'mastered')
-        .length;
-    final unitReview = widget.mode == 'mastery';
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const SizedBox(height: 16),
-        const Center(child: LearningMark(size: 88)),
-        const SizedBox(height: 24),
-        Text(
-          unitReview ? 'You brought it together.' : 'One more step forward.',
-          textAlign: TextAlign.center,
-          style: text.headlineMedium?.copyWith(height: 1.25),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          mastered > 0
-              ? 'Your practice is building strong understanding.'
-              : 'Every try helps you see a little more.',
-          textAlign: TextAlign.center,
-          style: text.bodyLarge?.copyWith(color: SahlhaColors.muted),
-        ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: unitReview ? SahlhaColors.sunSoft : Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: SahlhaColors.line),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              JourneyEyebrow(
-                unitReview ? 'UNIT REVIEW COMPLETE' : 'PRACTICE COMPLETE',
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '${result.correct} of ${result.total} correct',
-                style: text.titleLarge,
-              ),
-              const SizedBox(height: 14),
-              SahlhaProgressBar(value: result.score),
-              if (mastered > 0) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '$mastered practiced ${mastered == 1 ? 'skill is' : 'skills are'} at mastery.',
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        SahlhaPrimaryButton(
-          label: 'Continue my learning path',
-          onPressed: _path,
-        ),
-        TextButton(
-          onPressed: _start,
-          child: const Text('Revisit this practice'),
-        ),
-        const SizedBox(height: 12),
-        ExpansionTile(
-          title: const Text('Look back at your answers'),
-          children: [
-            for (var i = 0; i < result.results.length; i++)
-              ListTile(
-                leading: Icon(
-                  result.results[i].correct
-                      ? Icons.check_circle_outline_rounded
-                      : Icons.lightbulb_outline_rounded,
-                  color: SahlhaColors.tealDark,
-                ),
-                title: Text('Question ${i + 1}'),
-                subtitle: Text(
-                  result.results[i].correct ? 'Understood' : 'Keep practicing',
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget _feedback(BuildContext context, PracticeState state) =>
+      SkillCompletion(
+        state: state,
+        elapsed: _elapsed.elapsed,
+        onPath: _path,
+        onRetry: _start,
+      );
 }
 
 class _AnswerOption extends StatelessWidget {
@@ -379,9 +333,9 @@ class _AnswerOption extends StatelessWidget {
                 width: 30,
                 height: 30,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: SahlhaColors.cream,
-                  borderRadius: BorderRadius.circular(9),
+                  shape: BoxShape.circle,
                 ),
                 child: correct
                     ? const Icon(
@@ -389,7 +343,13 @@ class _AnswerOption extends StatelessWidget {
                         size: 19,
                         color: SahlhaColors.tealDark,
                       )
-                    : Text('${index + 1}'),
+                    : Icon(
+                        selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        size: 22,
+                        color: SahlhaColors.tealDark,
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(

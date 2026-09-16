@@ -34,6 +34,18 @@ class PreviewStudentRepository extends StudentRepository {
   int starts = 0;
   bool failStart = false;
   bool emptyStart = false;
+  bool returning = false;
+  @override
+  Future<AssessmentStart> startQuickCheck({
+    String? classroomId,
+    String? materialId,
+    bool childScope = false,
+  }) => startAssessment(
+    classroomId: classroomId,
+    materialId: materialId,
+    childScope: childScope,
+  );
+
   @override
   Future<Map<String, dynamic>> learningPath({
     String? classroomId,
@@ -45,6 +57,10 @@ class PreviewStudentRepository extends StudentRepository {
       {
         'classroom_id': 'room',
         'subject': 'Programming',
+        if (returning)
+          'recent_practiced_at': DateTime.now()
+              .subtract(const Duration(days: 2))
+              .toIso8601String(),
         'current': journeyFixture()['current'],
       },
     ],
@@ -180,6 +196,21 @@ Future<void> mount(
       ],
       child: MaterialApp(
         theme: SahlhaTheme.light().copyWith(
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              textStyle: const TextStyle(fontFamily: 'PreviewNunito'),
+            ),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              textStyle: const TextStyle(fontFamily: 'PreviewNunito'),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              textStyle: const TextStyle(fontFamily: 'PreviewNunito'),
+            ),
+          ),
           textTheme: SahlhaTheme.light().textTheme.apply(
             fontFamily: 'PreviewNunito',
           ),
@@ -196,7 +227,16 @@ Future<void> mount(
           child: Scaffold(
             body: screen,
             bottomNavigationBar: navigation
-                ? StudentBottomNavigation(selectedIndex: 1, onSelected: (_) {})
+                ? StudentBottomNavigation(
+                    selectedIndex: screen is StudentHomeScreen
+                        ? 0
+                        : screen is StudentProgressScreen
+                        ? 2
+                        : screen is StudentProfileScreen
+                        ? 3
+                        : 1,
+                    onSelected: (_) {},
+                  )
                 : null,
           ),
         ),
@@ -305,8 +345,8 @@ void main() {
     expect(find.byType(CurrentSkillCard), findsNothing);
     expect(find.text('YOUR NEXT STEP'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('UNIT 1'), findsOneWidget);
-    expect(find.text('Programming Fundamentals'), findsOneWidget);
+    expect(find.textContaining('Unit 1'), findsOneWidget);
+    expect(find.text('Lecture 11'), findsOneWidget);
   });
 
   testWidgets('Tapping nodes selects them without changing progress', (
@@ -314,18 +354,18 @@ void main() {
   ) async {
     await mount(tester, const LearnScreen(classroomId: 'room'));
     // Scenario B: a completed node offers review, not a reset.
-    await tester.tap(find.text('Boolean Values').first);
+    await tester.tap(find.text('False').first);
     await tester.pumpAndSettle();
     expect(find.text('COMPLETED'), findsOneWidget);
     expect(find.text('Review skill'), findsOneWidget);
     // Scenario C: a locked node explains its prerequisite.
-    await tester.ensureVisible(find.text('Working with Lists').first);
+    await tester.ensureVisible(find.text('Mydlist').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Working with Lists').first);
+    await tester.tap(find.text('Mydlist').first);
     await tester.pumpAndSettle();
     expect(find.text('COMING UP'), findsOneWidget);
     expect(find.text('Locked for now'), findsOneWidget);
-    expect(find.textContaining('Introduction to Loops'), findsWidgets);
+    expect(find.textContaining('Looping'), findsWidgets);
   });
 
   testWidgets('Practice retries real startup and never prints raw errors', (
@@ -366,18 +406,52 @@ void main() {
       );
       await tester.tap(find.text('Repeat an instruction'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Check answer'));
-      await tester.tap(find.text('Check answer'));
-      await tester.pumpAndSettle();
+      expect(find.text('Check answer'), findsNothing);
       await tester.ensureVisible(find.text('Finish practice'));
       await tester.tap(find.text('Finish practice'));
       await tester.pumpAndSettle();
-      expect(find.text('1 of 1 correct'), findsOneWidget);
+      expect(find.text('1/1'), findsOneWidget);
       expect(find.textContaining('921200ded738'), findsNothing);
       await capture(tester, 'feedback');
     },
   );
 
+  testWidgets(
+    'Quick Check waits for the student and starts one real assessment',
+    (tester) async {
+      final repository = PreviewStudentRepository();
+      await mount(
+        tester,
+        const PracticeScreen(
+          materialId: 'unit-a',
+          classroomId: 'room',
+          mode: 'checkpoint',
+        ),
+        repository: repository,
+        navigation: false,
+      );
+      expect(repository.starts, 0);
+      expect(find.text('~8 questions'), findsOneWidget);
+      await capture(tester, 'quick-check');
+      await tester.ensureVisible(find.text('Start Quick Check'));
+      await tester.tap(find.text('Start Quick Check'));
+      await tester.pumpAndSettle();
+      expect(repository.starts, 1);
+      expect(find.text('Repeat an instruction'), findsOneWidget);
+    },
+  );
+  testWidgets('Comeback uses the actual name and current skill', (
+    tester,
+  ) async {
+    await mount(
+      tester,
+      const StudentHomeScreen(),
+      repository: PreviewStudentRepository()..returning = true,
+    );
+    expect(find.text('Welcome back, Youssef!'), findsOneWidget);
+    expect(find.text('Continue where you left off'), findsOneWidget);
+    await capture(tester, 'comeback');
+  });
   testWidgets('Help starts with three choices and reveals additional support', (
     tester,
   ) async {

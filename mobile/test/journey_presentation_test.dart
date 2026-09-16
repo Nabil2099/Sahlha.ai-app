@@ -17,6 +17,7 @@ Map<String, dynamic> journeyFixture() => {
           'attempted': 4,
           'explanation': true,
           'exercise_ready': true,
+          'practice_questions': 4,
         },
         {
           'id': 'row-b',
@@ -27,6 +28,7 @@ Map<String, dynamic> journeyFixture() => {
           'attempted': 4,
           'explanation': true,
           'exercise_ready': true,
+          'practice_questions': 4,
         },
         {
           'id': 'row-c',
@@ -36,6 +38,7 @@ Map<String, dynamic> journeyFixture() => {
           'state': 'not_started',
           'explanation': true,
           'exercise_ready': true,
+          'practice_questions': 4,
         },
         {
           'id': 'row-d',
@@ -71,14 +74,14 @@ void main() {
   test('Titles remove IDs and filenames without mutating source models', () {
     final raw = journeyFixture();
     final unit = LearningJourney.fromJson(raw).units.single;
-    expect(unit.title, 'Programming Fundamentals');
-    expect(unit.steps.first.title, 'Boolean Values');
-    expect(unit.steps[3].title, 'Working with Lists');
+    expect(unit.title, 'Lecture 11');
+    expect(unit.steps.first.title, 'False');
+    expect(unit.steps[3].title, 'Mydlist');
     expect(unit.source.title, 'Lecture_11.pdf');
     expect(unit.steps.first.skill.name, 'False (921200ded738)');
     expect(
       studentTitle('921200ded738__While', context: 'Python loop'),
-      'While Loops',
+      'While',
     );
     expect(studentTitle('921200ded738'), 'Learning step');
   });

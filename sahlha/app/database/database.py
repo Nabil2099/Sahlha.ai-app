@@ -59,6 +59,15 @@ def _ensure_columns() -> None:
         "student_skill_performance": [("course_id", "VARCHAR(128)"), ("lesson_id", "VARCHAR(128)"),
                                       ("skill_row_id", "VARCHAR(32)")],
     }
+    additions = {
+        "documents": {"blocks": "JSON DEFAULT '[]'", "extraction_quality": "JSON DEFAULT '{}'"},
+        "document_chunks": {"section": "TEXT DEFAULT ''", "section_id": "TEXT DEFAULT ''", "type": "TEXT DEFAULT 'paragraph'", "block_metadata": "JSON DEFAULT '{}'"},
+        "skills": {"extraction_active": "BOOLEAN NOT NULL DEFAULT 1", "learning_objective": "TEXT DEFAULT ''", "prerequisites": "JSON DEFAULT '[]'", "misconceptions": "JSON DEFAULT '[]'", "difficulty": "TEXT DEFAULT ''", "source_section_ids": "JSON DEFAULT '[]'", "evidence_chunk_ids": "JSON DEFAULT '[]'", "learning_content": "JSON DEFAULT '{}'"},
+        "questions": {"evidence_chunk_ids": "JSON DEFAULT '[]'", "learning_objective": "TEXT DEFAULT ''", "tested_concept": "TEXT DEFAULT ''", "verification": "JSON DEFAULT '{}'"},
+        "learning_materials": {"quality_signals": "JSON DEFAULT '{}'"},
+    }
+    for table, columns in additions.items():
+        wanted.setdefault(table, []).extend(columns.items())
     with engine.connect() as conn:
         for table, cols in wanted.items():
             if not inspect(conn).has_table(table):

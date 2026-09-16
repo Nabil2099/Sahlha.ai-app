@@ -16,7 +16,7 @@ String studentTitle(
   String context = '',
   String fallback = 'Learning step',
 }) {
-  var title = cleanStudentText(source)
+  final title = cleanStudentText(source)
       .replaceAll(
         RegExp(r'\.(pdf|docx?|pptx?|txt|md)\b', caseSensitive: false),
         '',
@@ -24,27 +24,9 @@ String studentTitle(
       .replaceAll(RegExp(r'[_]+'), ' ')
       .replaceAll(RegExp(r'^\s*#+\s*|^\s*\d+[.)]\s*'), '')
       .trim();
-  final evidence = '$title $context'.toLowerCase();
-  final programming = RegExp(
-    r'python|programming|boolean|control flow|\bcode\b|\bloop\b|\blist\b',
-  ).hasMatch(evidence);
-  if (programming) {
-    final normalized = switch (title.toLowerCase()) {
-      'false' || 'true'
-          when RegExp(r'bool|true|false').hasMatch(context.toLowerCase()) =>
-        'Boolean Values',
-      'while' => 'While Loops',
-      'looping' => 'Introduction to Loops',
-      'loops' => 'Loop Basics',
-      'mydlist'
-          when RegExp(r'\blist\b|\blists\b').hasMatch(context.toLowerCase()) =>
-        'Working with Lists',
-      'statements' => 'Programming Statements',
-      _ => title,
-    };
-    if (normalized != title) return normalized;
+  if (title.isEmpty || !RegExp(r'[\p{L}]', unicode: true).hasMatch(title)) {
+    return fallback;
   }
-  if (title.isEmpty || RegExp(r'^[\W\d_]+$').hasMatch(title)) return fallback;
   return title
       .split(' ')
       .map(
@@ -174,11 +156,7 @@ class LearningJourney {
 
 String unitTitle(PathUnit unit, {String subject = ''}) {
   final raw = unit.title.trim();
-  final fileLike = RegExp(
-    r'\.(pdf|docx?|pptx?|txt|md)\b|^(lecture|lesson|upload|document)[ _-]*\d*$',
-    caseSensitive: false,
-  ).hasMatch(raw);
-  if (raw.isNotEmpty && !fileLike) {
+  if (raw.isNotEmpty) {
     return studentTitle(raw, fallback: 'Your learning unit');
   }
   final titles = unit.skills
@@ -186,15 +164,6 @@ String unitTitle(PathUnit unit, {String subject = ''}) {
       .where((s) => s != 'Learning step')
       .toSet()
       .toList();
-  final evidence =
-      '${unit.skills.map((s) => '${s.name} ${s.description}').join(' ')} $subject'
-          .toLowerCase();
-  if (RegExp(r'python|programming|boolean|control flow').hasMatch(evidence)) {
-    if (RegExp(r'list|boolean|statement').hasMatch(evidence)) {
-      return 'Programming Fundamentals';
-    }
-    if (evidence.contains('loop')) return 'Loops & Control Flow';
-  }
   if (titles.isNotEmpty) return titles.take(2).join(' & ');
   return studentTitle(subject, fallback: 'Your learning unit');
 }

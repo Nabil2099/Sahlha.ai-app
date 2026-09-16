@@ -56,7 +56,7 @@ def _index(chunks):
     texts = [c.text for c in chunks]
     cache = _read_cache()
     try:
-        if emb.dense and cache and cache[0] == emb.backend and cache[3].shape[1] == 384:
+        if emb.dense and cache and cache[0] == emb.backend and cache[3].shape[1] == (getattr(emb, "dimension", None) or cache[3].shape[1]):
             old = {cid: (digest, vector) for cid, digest, vector in zip(cache[1], cache[2], cache[3])}
             missing = [i for i, (cid, digest) in enumerate(zip(ids, hashes)) if cid not in old or old[cid][0] != digest]
             removed = len(set(old) - set(ids))
@@ -89,7 +89,7 @@ def rebuild_index(db: Session) -> int:
         if chunks:
             _index(chunks)
         else:
-            _write_cache(get_embeddings().backend, [], [], np.empty((0, 384)))
+            _write_cache(get_embeddings().backend, [], [], np.empty((0, 0)))
         return len(chunks)
 
 
@@ -104,32 +104,88 @@ def mmr_select(vectors, scores, count, diversity=0.7):
     return chosen
 
 
+def lexical_scores(query, chunks):
+    """BM25 ranks on the authorized candidate corpus, including code identifiers."""
+    from collections import Counter
+    terms = re.findall(r"\w+", query.lower())
+    documents = [Counter(re.findall(r"\w+", c.text.lower())) for c in chunks]
+    lengths = [sum(d.values()) for d in documents]
+    average = sum(lengths) / max(1, len(lengths)) or 1
+    scores = np.zeros(len(chunks))
+    for term in set(terms):
+        frequency = sum(term in d for d in documents)
+        inverse = np.log(1 + (len(chunks) - frequency + .5) / (frequency + .5))
+        for i, doc in enumerate(documents):
+            tf = doc[term]
+            scores[i] += inverse * tf * 2.5 / (tf + 1.5 * (.25 + .75 * lengths[i] / average))
+    return scores
+
+
+_rerankers = {}
+
+
+def rerank(query, chunks, candidates):
+    if not settings.reranker_enabled or not candidates:
+        return candidates
+    try:
+        if settings.reranker_model not in _rerankers:
+            from sentence_transformers import CrossEncoder
+            _rerankers[settings.reranker_model] = CrossEncoder(settings.reranker_model)
+        values = np.asarray(_rerankers[settings.reranker_model].predict(
+            [(query, chunks[i].text) for i in candidates]), dtype=float)
+        if values.shape != (len(candidates),) or not np.isfinite(values).all():
+            raise ValueError("Invalid reranker scores")
+        return [candidates[i] for i in np.argsort(-values, kind='stable')]
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Optional reranker unavailable (%s)", type(exc).__name__)
+        return candidates
+
+
 def search(db: Session, query: str, *, top_k: int = 5, course_id=None, lesson_id=None, skill_id=None) -> list[dict]:
     top_k = max(1, top_k or settings.top_k_retrieval)
     chunks = repo.get_chunks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+    if skill_id is not None and course_id is not None and lesson_id is not None:
+        skill = repo.get_skill(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+        if skill and skill.evidence_chunk_ids:
+            evidence_ids = set(skill.evidence_chunk_ids)
+            chunks = [c for c in repo.get_chunks(db, course_id=course_id, lesson_id=lesson_id) if c.id in evidence_ids]
     if not chunks:
         return []
     with _lock:
+        lexical = lexical_scores(query, chunks)
+        ranks = {'lexical': [int(i) for i in np.argsort(-lexical, kind='stable') if lexical[i] > 0]}
+        dense_vectors = None
         try:
             corpus = repo.get_chunks(db)
             emb, vectors = _index(corpus)
             positions = {c.id: i for i, c in enumerate(corpus)}
             vectors = vectors[[positions[c.id] for c in chunks]]
             scores = vectors @ _matrix(emb.embed_query(query))[0]
-            floor = settings.dense_min_score if emb.dense else 0.000001
-            chosen = mmr_select(vectors, scores, top_k, settings.mmr_lambda)
-            selected = [i for i in chosen if scores[i] >= floor]
+            if emb.dense:
+                dense_vectors = vectors
+            floor = settings.dense_min_score if emb.dense else .000001
+            selected = [int(i) for i in np.argsort(-scores, kind='stable') if scores[i] >= floor]
             if not selected and scores.max() >= floor * settings.retrieval_backoff_ratio:
                 selected = [int(scores.argmax())]
+            ranks['dense' if emb.dense else 'tfidf'] = selected
         except Exception as exc:
             logging.getLogger(__name__).warning("Vector retrieval unavailable (%s)", type(exc).__name__)
-            selected = []
-        if not selected:
-            terms = set(re.findall(r"\w+", query.lower()))
-            scores = np.array([len(terms & set(re.findall(r"\w+", c.text.lower()))) for c in chunks], dtype=float)
-            selected = [i for i in np.argsort(-scores, kind="stable")[:top_k] if scores[i] > 0]
+        fused, sources = {}, {}
+        for source, ranking in ranks.items():
+            for rank, index in enumerate(ranking, 1):
+                fused[index] = fused.get(index, 0) + 1 / (60 + rank)
+                sources.setdefault(index, []).append(source)
+        candidates = sorted(fused, key=lambda i: (-fused[i], i))[:top_k * 3]
+        if dense_vectors is not None and candidates:
+            relevance = np.array([fused[i] for i in candidates])
+            relevance /= relevance.max()
+            diverse = mmr_select(dense_vectors[candidates], relevance, len(candidates), settings.mmr_lambda)
+            candidates = [candidates[i] for i in diverse]
+        selected = rerank(query, chunks, candidates)[:top_k]
     return [{"document_id": chunks[i].document_id, "course_id": chunks[i].course_id,
              "lesson_id": chunks[i].lesson_id, "skill_id": chunks[i].skill_id,
              "page": chunks[i].page, "chunk_id": chunks[i].id,
-             "chunk_index": chunks[i].chunk_index, "text": chunks[i].text,
-             "score": float(scores[i])} for i in selected]
+             "section": chunks[i].section, "section_id": chunks[i].section_id,
+             "type": chunks[i].type, "chunk_index": chunks[i].chunk_index, "text": chunks[i].text,
+             "score": float(fused[i]), "retrieval_source": 'hybrid' if len(sources[i]) > 1 else sources[i][0],
+             "retrieval_sources": sources[i]} for i in selected]

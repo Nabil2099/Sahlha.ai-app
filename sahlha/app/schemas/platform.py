@@ -113,6 +113,7 @@ class SupportSignalRequest(BaseModel):
 
 
 class StartPlatformAssessmentRequest(BaseModel):
+    checkpoint: bool = False
     classroom_id: str | None = None
     material_id: str | None = None
     skill_id: str | None = None

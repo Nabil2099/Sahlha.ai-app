@@ -1,3 +1,5 @@
+import 'audio_companion.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -139,7 +141,7 @@ class SkillVisualCard extends ConsumerWidget {
                 aspectRatio: 16 / 10,
                 child: Image.memory(
                   bytes,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   gaplessPlayback: true,
                   frameBuilder:
                       (context, child, frame, wasSynchronouslyLoaded) {
@@ -216,7 +218,10 @@ class ReadAloudButton extends ConsumerStatefulWidget {
   ConsumerState<ReadAloudButton> createState() => _ReadAloudButtonState();
 }
 
-class _ReadAloudButtonState extends ConsumerState<ReadAloudButton> {
+class _ReadAloudButtonState extends ConsumerState<ReadAloudButton>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   late final String _url = ref
       .read(studentRepositoryProvider)
       .skillAudioUrl(
@@ -262,6 +267,7 @@ class _ReadAloudButtonState extends ConsumerState<ReadAloudButton> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     // Watching keeps the shared player alive while this skill is visible.
     final audio = ref.watch(audioServiceProvider);
     _audio = audio;
@@ -290,10 +296,12 @@ class _ReadAloudButtonState extends ConsumerState<ReadAloudButton> {
                     color: SahlhaColors.tealDark,
                   ),
                   const SizedBox(width: 8),
+                  AudioCompanion(url: _url, size: 32),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Listen to this lesson',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      'Listen to this explanation',
+                      style: Theme.of(context).textTheme.titleSmall,
                     ),
                   ),
                 ],

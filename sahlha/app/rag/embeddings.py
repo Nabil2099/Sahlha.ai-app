@@ -63,12 +63,15 @@ class DenseEmbeddingModel:
         self.model_name = model_name or settings.embedding_model
         self.backend = f"dense:{self.model_name}"
         self.model = SentenceTransformer(self.model_name)
+        dimension_getter = getattr(self.model, "get_sentence_embedding_dimension", None)
+        self.dimension = dimension_getter() if dimension_getter else None
 
     def embed(self, texts):
         result = np.asarray(self.model.encode(texts, normalize_embeddings=True,
                             show_progress_bar=False), dtype=np.float32)
-        if result.ndim != 2 or result.shape[1] != 384 or not np.isfinite(result).all():
+        if result.ndim != 2 or result.shape[1] < 1 or (self.dimension is not None and result.shape[1] != self.dimension) or not np.isfinite(result).all():
             raise ValueError("Invalid dense embeddings")
+        self.dimension = result.shape[1]
         return result
 
     def fit(self, texts):

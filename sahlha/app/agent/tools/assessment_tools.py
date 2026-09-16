@@ -17,7 +17,7 @@ class SelectionError(ValueError):
 
 
 def select_questions(db: Session, *, student_id: str, course_id=None, lesson_id=None,
-                     skill_id=None, n_per_bank=None):
+                     skill_id=None, n_per_bank=None, learned_only=False):
     from collections import Counter
     from sahlha.app.agent.tools import question_tools
     n = n_per_bank or settings.assessment_num_questions
@@ -25,6 +25,15 @@ def select_questions(db: Session, *, student_id: str, course_id=None, lesson_id=
     banks = repo.scoped_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id, status="approved")
     skills = repo.scoped_skills(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     key = lambda row: (row.course_id, row.lesson_id, row.skill_id)
+    if learned_only:
+        learned = {key(p) for p in repo.get_skill_performance(
+            db, student_id, course_id=course_id, lesson_id=lesson_id) if p.total_attempts > 0}
+        banks = [b for b in banks if key(b) in learned]
+        skills = [s for s in skills if key(s) in learned]
+        allowed_banks = {b.id for b in banks}
+        pool = [q for q in pool if q['bank_id'] in allowed_banks]
+        if len({b.skill_id for b in banks}) < 2:
+            raise SelectionError('Practice at least two skills before a Quick Check.', {})
     covered = {key(b) for b in banks}
     missing = [s for s in skills if key(s) not in covered]
     flagged = repo.get_flagged_question_ids(db)

@@ -40,11 +40,20 @@ void main() {
   ) async {
     final repo = ImageRepository();
     await mount(tester, lesson, repository: repo, navigation: false);
+    expect(repo.imageCalls, 0);
+    await tester.scrollUntilVisible(
+      find.text('Explore the lesson diagram'),
+      200,
+    );
+    await tester.ensureVisible(find.text('Explore the lesson diagram'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Explore the lesson diagram'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byType(Image), 200);
     await tester.pumpAndSettle();
     expect(repo.imageCalls, 1);
     expect(find.byType(Image), findsOneWidget);
-    expect(find.text('Listen to this lesson'), findsOneWidget);
+    expect(find.text('Listen to this explanation'), findsOneWidget);
     expect(find.byType(Slider), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -53,6 +62,14 @@ void main() {
   ) async {
     final repo = ImageRepository()..available = false;
     await mount(tester, lesson, repository: repo, navigation: false);
+    await tester.scrollUntilVisible(
+      find.text('Explore the lesson diagram'),
+      200,
+    );
+    await tester.ensureVisible(find.text('Explore the lesson diagram'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Explore the lesson diagram'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Try picture again'), 200);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Try picture again'));

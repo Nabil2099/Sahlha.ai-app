@@ -16,6 +16,7 @@ abstract class PathSkill with _$PathSkill {
     @Default('not_started') String state,
     @JsonKey(name: 'exercise_ready') @Default(false) bool exerciseReady,
     @JsonKey(name: 'bank_questions') @Default(0) int bankQuestions,
+    @JsonKey(name: 'practice_questions') @Default(0) int practiceQuestions,
   }) = _PathSkill;
 
   factory PathSkill.fromJson(Map<String, dynamic> json) =>
@@ -40,6 +41,7 @@ abstract class SkillBundle with _$SkillBundle {
   const factory SkillBundle({
     @JsonKey(name: 'skill_id') @Default('') String skillId,
     @Default('') String name,
+    @Default('') String subject,
     @Default('') String description,
     @Default('') String explanation,
     @JsonKey(name: 'key_concepts') @Default([]) List<String> keyConcepts,

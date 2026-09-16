@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     tesseract_cmd: str = ""
     poppler_path: str = ""
     ocr_min_chars: int = 50
+    ocr_languages: str = "eng"
+    ocr_dpi: int = 250
+    reranker_enabled: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     enable_llm_critique: bool = False
     legacy_dev_api_enabled: bool = False
 

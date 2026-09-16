@@ -43,15 +43,15 @@ def add_chunks(db: Session, chunks: list[dict]) -> int:
 def get_chunks(db: Session, *, course_id: str | None = None, lesson_id: str | None = None,
                skill_id: str | None = None, document_id: str | None = None) -> list[m.DocumentChunk]:
     q = select(m.DocumentChunk)
-    if course_id:
+    if course_id is not None:
         q = q.where(m.DocumentChunk.course_id == course_id)
-    if lesson_id:
+    if lesson_id is not None:
         q = q.where(m.DocumentChunk.lesson_id == lesson_id)
-    if skill_id:
+    if skill_id is not None:
         q = q.where(m.DocumentChunk.skill_id == skill_id)
-    if document_id:
+    if document_id is not None:
         q = q.where(m.DocumentChunk.document_id == document_id)
-    return list(db.execute(q).scalars().all())
+    return list(db.execute(q.order_by(m.DocumentChunk.document_id, m.DocumentChunk.chunk_index)).scalars().all())
 
 
 # ---- Lesson explanations ----
@@ -87,7 +87,8 @@ def get_lesson_explanation(db: Session, *, course_id: str, lesson_id: str) -> m.
 
 # ---- Skills ----
 def upsert_skill(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
-                 name: str = "", description: str = "", key_concepts: list | None = None) -> m.Skill:
+                 name: str = "", description: str = "", key_concepts: list | None = None,
+                 educational_metadata: dict | None = None) -> m.Skill:
     q = select(m.Skill).where(m.Skill.course_id == course_id, m.Skill.lesson_id == lesson_id,
                               m.Skill.skill_id == skill_id)
     skill = db.execute(q).scalars().first()
@@ -95,12 +96,16 @@ def upsert_skill(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
         skill = m.Skill(course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
         db.add(skill)
         db.flush()
+    skill.extraction_active = True
     if name:
         skill.name = name
     if description:
         skill.description = description
     if key_concepts is not None:
         skill.key_concepts = key_concepts
+    for field, value in (educational_metadata or {}).items():
+        if field in {"learning_objective", "prerequisites", "misconceptions", "difficulty", "source_section_ids", "evidence_chunk_ids", "learning_content"}:
+            setattr(skill, field, value)
     skill.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(skill)
@@ -108,7 +113,7 @@ def upsert_skill(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
 
 
 def list_skills(db: Session, *, course_id: str, lesson_id: str) -> list[m.Skill]:
-    q = select(m.Skill).where(m.Skill.course_id == course_id, m.Skill.lesson_id == lesson_id)
+    q = select(m.Skill).where(m.Skill.course_id == course_id, m.Skill.lesson_id == lesson_id, m.Skill.extraction_active.is_(True))
     return list(db.execute(q).scalars().all())
 
 
@@ -423,7 +428,7 @@ def scoped_banks(db, *, course_id=None, lesson_id=None, skill_id=None, status=No
 
 
 def scoped_skills(db, *, course_id=None, lesson_id=None, skill_id=None):
-    query = select(m.Skill)
+    query = select(m.Skill).where(m.Skill.extraction_active.is_(True))
     for name, value in (("course_id", course_id), ("lesson_id", lesson_id), ("skill_id", skill_id)):
         if value:
             query = query.where(getattr(m.Skill, name) == value)

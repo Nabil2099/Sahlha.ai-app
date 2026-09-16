@@ -8,6 +8,7 @@ import '../../../core/widgets/sahlha_widgets.dart'
     show EmptyState, ErrorState, SahlhaPrimaryButton;
 import '../data/student_repository.dart';
 import 'journey_presentation.dart';
+import 'widgets/engagement.dart';
 import 'widgets/learning_journey.dart';
 
 class StudentHomeScreen extends ConsumerWidget {
@@ -17,6 +18,9 @@ class StudentHomeScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final home = ref.watch(studentHomeProvider);
     final name = cleanStudentText(user?.name ?? '').split(' ').first;
+    final returning = (home.asData?.value['classrooms'] as List? ?? [])
+        .whereType<Map>()
+        .any((r) => r['recent_practiced_at'] != null);
     return Scaffold(
       body: SafeArea(
         child: StudentCanvas(
@@ -36,26 +40,48 @@ class StudentHomeScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const JourneyEyebrow('ONE STEP AT A TIME'),
-                          const SizedBox(height: 10),
                           Text(
-                            name.isEmpty ? 'Hello, learner.' : 'Hello, $name.',
-                            style: Theme.of(context).textTheme.headlineMedium,
+                            'Sahlha',
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const LearningMark(size: 52),
+                    const Icon(Icons.lock_outline_rounded, size: 20),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Make room for one good step.',
+                  'Learning made for you',
                   style: Theme.of(context).textTheme.bodyLarge
                       ?.copyWith(color: SahlhaColors.muted),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          returning
+                              ? (name.isEmpty
+                                    ? 'Welcome back! Ready for your next step?'
+                                    : 'Welcome back, $name!')
+                              : "Let\u2019s do one learning step today!",
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const SahlhaCompanion(size: 76),
+                  ],
+                ),
+                const SizedBox(height: 22),
                 home.when(
                   loading: () =>
                       const SizedBox(height: 320, child: JourneyLoading()),
@@ -101,6 +127,13 @@ class _HomeLearning extends ConsumerWidget {
     }
     final roomId = useExtra ? null : room?['classroom_id']?.toString();
     final extra = useExtra || room == null;
+    // Real submitted-practice recency across classrooms: powers the
+    // comeback line and the daily goal. No extra request — it rides on
+    // the home payload's `recent_practiced_at` fields.
+    final recent = mostRecentStamp(
+      rooms.map((r) => r['recent_practiced_at']?.toString()),
+    );
+    final comeback = relativeDayLabel(recent);
     final provider = studentLearningPathProvider(
       classroomId: roomId,
       supplementary: extra,
@@ -109,6 +142,26 @@ class _HomeLearning extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (comeback.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(
+                Icons.history_rounded,
+                size: 18,
+                color: SahlhaColors.muted,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Welcome back — you practiced ${comeback.toLowerCase()}.',
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: SahlhaColors.muted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         path.when(
           loading: () => const SizedBox(height: 260, child: JourneyLoading()),
           error: (_, _) => ErrorState(
@@ -134,13 +187,24 @@ class _HomeLearning extends ConsumerWidget {
                 if (current != null)
                   CurrentSkillCard(
                     title: current.title,
-                    contextLabel: 'CONTINUE LEARNING',
-                    subtitle:
-                        'Unit ${unit.number} · ${unit.title}\nSkill ${current.index + 1} of ${unit.steps.length}',
+                    contextLabel: comeback.isNotEmpty
+                        ? 'Continue where you left off'
+                        : 'Continue learning',
+                    questions: current.skill.practiceQuestions,
+                    minutes:
+                        ((current.skill.description
+                                        .split(RegExp(r'\s+'))
+                                        .length /
+                                    150) +
+                                current.skill.practiceQuestions * .6)
+                            .ceil()
+                            .clamp(1, 60),
+                    subtitle: journey.units.isEmpty ? '' : unit.title,
                     started: current.skill.attempted > 0,
                     progress: unit.steps.isEmpty
                         ? null
                         : (current.index + 1) / unit.steps.length,
+                    effort: effortLabelForMastery(current.skill.state),
                     onTap: () => context.push(
                       lessonLocation(
                         current,
@@ -166,7 +230,7 @@ class _HomeLearning extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const LearningMark(),
+                        const SahlhaCompanion(size: 56),
                         const SizedBox(height: 14),
                         Text(
                           journey.mastered == journey.total
@@ -188,41 +252,48 @@ class _HomeLearning extends ConsumerWidget {
                     ),
                   ),
                 const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: SahlhaColors.surfaceRaised,
-                    border: Border.all(color: SahlhaColors.borderSubtle),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: SahlhaShadows.soft,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const JourneyEyebrow('A SMALL GOAL FOR TODAY'),
-                      const SizedBox(height: 10),
-                      Text(
-                        current == null
-                            ? 'Revisit something you learned'
-                            : 'Take one learning step',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'One learning step today. A few focused minutes at your own pace.',
-                      ),
-                      const SizedBox(height: 18),
-                      UnitProgressBar(
-                        completed: journey.mastered,
-                        total: journey.total,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${journey.mastered} of ${journey.total} skills mastered',
-                      ),
-                    ],
-                  ),
+                Builder(
+                  builder: (_) {
+                    final goal = dailyGoalFor(
+                      hasStep: journey.total > 0,
+                      recentPracticedAt: recent,
+                      stepTitle: current?.title,
+                    );
+                    return DailyGoalCard(goal: goal);
+                  },
                 ),
+                const SizedBox(height: 22),
+                Text(
+                  'Recent activity',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 10),
+                for (final step
+                    in journey.units
+                        .expand((u) => u.steps)
+                        .where((s) => s.skill.attempted > 0)
+                        .take(1))
+                  Card(
+                    elevation: 0,
+                    color: Colors.white,
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.auto_stories_outlined,
+                        color: SahlhaColors.tealDark,
+                      ),
+                      title: Text(step.title),
+                      subtitle: Text(effortLabelForMastery(step.skill.state)),
+                      trailing: step.skill.state == 'mastered'
+                          ? const Icon(Icons.check, color: SahlhaColors.success)
+                          : null,
+                    ),
+                  ),
+                if (!journey.units
+                    .expand((u) => u.steps)
+                    .any((s) => s.skill.attempted > 0))
+                  const Text(
+                    'Your learning steps will appear here after practice.',
+                  ),
                 TextButton(
                   onPressed: () => context.go(
                     learningLocation(classroomId: roomId, supplementary: extra),

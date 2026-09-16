@@ -49,6 +49,7 @@ class PracticeController extends _$PracticeController {
     String? materialId,
     String? skillId,
     bool childScope = false,
+    bool checkpoint = false,
   }) async {
     if (state.starting) return;
     state = PracticeState(
@@ -59,14 +60,22 @@ class PracticeController extends _$PracticeController {
       childScope: childScope,
     );
     try {
-      final started = await ref
-          .read(studentRepositoryProvider)
-          .startAssessment(
-            classroomId: classroomId,
-            materialId: materialId,
-            skillId: skillId,
-            childScope: childScope,
-          );
+      final started = checkpoint
+          ? await ref
+                .read(studentRepositoryProvider)
+                .startQuickCheck(
+                  classroomId: classroomId,
+                  materialId: materialId,
+                  childScope: childScope,
+                )
+          : await ref
+                .read(studentRepositoryProvider)
+                .startAssessment(
+                  classroomId: classroomId,
+                  materialId: materialId,
+                  skillId: skillId,
+                  childScope: childScope,
+                );
       if (!ref.mounted) return;
       state = PracticeState(
         assessmentId: started.assessmentId,

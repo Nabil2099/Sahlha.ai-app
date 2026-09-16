@@ -87,11 +87,11 @@ def reject_bank(db: Session, bank_id: str, feedback: str = "") -> dict:
 
 def start_assessment(db: Session, *, student_id: str, student_name: str = "Student",
                      course_id: str | None = None, lesson_id: str | None = None,
-                     skill_id: str | None = None) -> dict:
+                     skill_id: str | None = None, learned_only: bool = False) -> dict:
     repo.get_or_create_student(db, student_id, student_name)
     agent = SahlhaAgent(db, AgentState())
     return agent.start_assessment(student_id=student_id, course_id=course_id,
-                                  lesson_id=lesson_id, skill_id=skill_id)
+                                  lesson_id=lesson_id, skill_id=skill_id, learned_only=learned_only)
 
 
 def submit_assessment(db: Session, *, assessment_id: str, answers: dict) -> dict:

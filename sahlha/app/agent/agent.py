@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from sahlha.app.agent.llm import (
     complete_json,
-    fallback_skills,
     generate_questions_llm,
 )
 from sahlha.app.agent.prompts import (
@@ -48,30 +47,47 @@ class SahlhaAgent:
         st.log("phase", st.current_phase)
         if not force:
             existing = skill_tools.list_skills(self.db, course_id=course_id, lesson_id=lesson_id)
-            if existing:
+            if existing and all(s.evidence_chunk_ids and s.learning_objective for s in existing):
                 skills = [self._skill_to_dict(s) for s in existing]
                 st.skills = skills
                 st.log("skills:existing", {"count": len(skills)})
                 return {"skills": skills, "backend": "existing", "trace": st.trace}
 
-        chunks = rag_tools.retrieve_lesson(self.db, course_id, lesson_id, top_k=8)
-        st.log("tool:retrieve_lesson", {"num_chunks": len(chunks)})
-        system, user = build_skill_extraction_prompt(course_id=course_id, lesson_id=lesson_id,
-                                                     context_chunks=chunks, max_skills=max_skills)
-        try:
-            data, backend = complete_json(system, user)
-            validated = SkillList(skills=data["skills"] if isinstance(data, dict) else data).skills
-            raw = [s.model_dump() for s in validated]
-        except RuntimeError:
-            raw, backend = fallback_skills(chunks, lesson_id, max_skills), "fallback(no-api-key)"
-        except Exception as exc:
-            raw, backend = fallback_skills(chunks, lesson_id, max_skills), f"fallback({type(exc).__name__})"
-        st.log("llm:extract_skills", {"backend": backend, "count": len(raw)})
+        from sahlha.app.agent.tools import content_tools
+        content_map, chunks = content_tools.build_content_map(self.db, course_id, lesson_id)
+        if not chunks:
+            raise ValueError("No source material is available for skill discovery.")
+        st.log("tool:full_lesson_map", {"num_chunks": len(chunks), "sections": len(content_map['sections'])})
+        raw, backends = [], []
+        # Every ordered chunk is mapped. Each request is bounded; there is no
+        # global prefix truncation or relevance top-k during topic discovery.
+        for chunk in chunks:
+            system, user = build_skill_extraction_prompt(course_id=course_id, lesson_id=lesson_id,
+                context_chunks=[chunk], max_skills=max_skills)
+            try:
+                data, backend = complete_json(system, user)
+                validated = SkillList(skills=data["skills"] if isinstance(data, dict) else data).skills
+                mapped = [item.model_dump() for item in validated]
+            except Exception as exc:
+                mapped = content_tools.fallback_topics([chunk])
+                backend = f"fallback({type(exc).__name__})"
+            raw.extend(mapped)
+            backends.append(backend)
+        raw, warnings = content_tools.validate_skills(raw, chunks, max(1, max_skills))
+        if not raw:
+            raw, extra = content_tools.validate_skills(content_tools.fallback_topics(chunks), chunks, max(1, max_skills))
+            warnings.extend(extra)
+        if not raw:
+            raise ValueError("No evidence-supported teachable topics could be extracted. Review extraction quality.")
+        content_tools.save_mapped_topics(self.db, course_id, lesson_id, content_map, raw, warnings)
+        backend = ','.join(dict.fromkeys(backends))
+        st.log("llm:extract_skills", {"backend": backend, "count": len(raw), "warnings": warnings})
 
         skills = []
         for s in raw[: max(1, max_skills)]:
             row = skill_tools.register_skill(self.db, course_id=course_id, lesson_id=lesson_id, skill=s)
             skills.append(self._skill_to_dict(row))
+        content_tools.retire_superseded_skills(self.db, course_id, lesson_id, {s["skill_id"] for s in skills})
         st.skills = skills
         return {"skills": skills, "backend": backend, "trace": st.trace}
 
@@ -124,12 +140,16 @@ class SahlhaAgent:
         st.current_phase = Phase.QUESTION_GENERATION
         st.log("phase", Phase.QUESTION_GENERATION)
 
-        # Skill-focused retrieval: prefer chunks for this skill, back off to the lesson.
-        chunks = rag_tools.retrieve_relevant_material(self.db, f"{skill_id} {lesson_id} key concepts examples",
-                                                      top_k=5, course_id=course_id,
-                                                      lesson_id=lesson_id, skill_id=skill_id)
+        from sahlha.app.agent.tools import content_tools
+        skill_row = skill_tools.get_skill(self.db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+        objective = skill_row.learning_objective if skill_row else f'Explain {skill_id.replace("_", " ")}.'
+        misconceptions = skill_row.misconceptions if skill_row else []
+        chunks = content_tools.skill_evidence(self.db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id,
+            query=f"{skill_row.name if skill_row else skill_id} {objective}")
+        for chunk in chunks:
+            chunk['learning_objective'] = objective
         if not chunks:
-            chunks = rag_tools.retrieve_lesson(self.db, course_id, lesson_id, top_k=5)
+            raise ValueError("No source evidence is available within this skill scope.")
         st.retrieved_context = chunks
         st.log("tool:retrieve_skill_material", {"skill_id": skill_id, "num_chunks": len(chunks),
                                                 "chunk_ids": [c.get("chunk_id") for c in chunks]})
@@ -141,6 +161,7 @@ class SahlhaAgent:
         system, user = build_question_prompt(course_id=course_id, lesson_id=lesson_id,
                                              skill_id=skill_id, context_chunks=chunks,
                                              feedback=teacher_feedback, n=n_questions)
+        user += f"\nLearning objective: {objective}\nKnown misconceptions: {misconceptions}"
         questions, backend = generate_questions_llm(system, user, chunks, skill_id, n_questions, teacher_feedback)
         st.log("llm:generate_questions", {"backend": backend, "num_questions": len(questions)})
         from sahlha.app.agent.tools.critique_tools import critique_and_top_up
@@ -158,7 +179,7 @@ class SahlhaAgent:
 
     # ---------- ASSESSMENT ----------
     def start_assessment(self, *, student_id: str, course_id: str | None = None,
-                         lesson_id: str | None = None, skill_id: str | None = None) -> dict:
+                         lesson_id: str | None = None, skill_id: str | None = None, learned_only: bool = False) -> dict:
         st = self.state
         st.student_id = student_id
         st.current_phase = Phase.ASSESSMENT
@@ -176,7 +197,7 @@ class SahlhaAgent:
 
         selected, meta = assessment_tools.select_questions(self.db, student_id=student_id,
                                                            course_id=course_id, lesson_id=lesson_id,
-                                                           skill_id=skill_id)
+                                                           skill_id=skill_id, learned_only=learned_only)
         st.log("tool:select_questions", meta)
         st.current_question_ids = [q["id"] for q in selected]
         bank_id = selected[0]["bank_id"] if selected else ""

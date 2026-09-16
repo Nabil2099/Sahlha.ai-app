@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from sahlha.app.agent.agent import SahlhaAgent
 from sahlha.app.agent.state import AgentState
-from sahlha.app.agent.tools import question_tools
+from sahlha.app.agent.tools import question_tools, quality_tools
 from sahlha.app.config import settings
 from sahlha.app.database import models as m
 from sahlha.app.database.repositories import platform as prepo
@@ -88,6 +88,7 @@ def process_material(db: Session, mat: m.LearningMaterial, file_bytes: bytes, *,
                                   "This scan needs text recognition (OCR), which is unavailable right now.")
         raise ValueError("This scan needs text recognition (OCR), which is unavailable right now.")
     mat.document_id = result["document_id"]
+    mat.quality_signals = quality_tools.lesson_quality(db, course_id, lesson_id)
     db.commit()
     if not mat.title or mat.title == mat.original_filename or mat.title.lower() in {"lesson", "upload", "document", "untitled"}:
         mat.title = result["title"]
@@ -104,6 +105,7 @@ def extract_material_skills(db: Session, mat: m.LearningMaterial, *, force: bool
         raise ValueError("Material processing must finish before extracting skills")
     course_id, lesson_id = mapping.scope_for_material(mat)
     out = legacy.extract_skills(db, course_id=course_id, lesson_id=lesson_id, force=force)
+    mat.quality_signals = quality_tools.lesson_quality(db, course_id, lesson_id)
     prepo.set_material_status(db, mat, "skills_ready", f"{len(out['skills'])} skills")
     return out
 
@@ -124,6 +126,7 @@ def generate_material_banks(db: Session, mat: m.LearningMaterial, *, teacher: m.
             b.classroom_id = mat.classroom_id
             b.material_id = mat.id
     db.commit()
+    mat.quality_signals = quality_tools.lesson_quality(db, course_id, lesson_id)
     prepo.set_material_status(db, mat, "banks_ready")
     return out
 
@@ -137,6 +140,7 @@ def material_to_dict(db: Session, mat: m.LearningMaterial) -> dict:
             "scope": mat.scope, "source_type": mat.source_type,
             "classroom_id": mat.classroom_id, "child_student_id": mat.child_student_id,
             "status": mat.processing_status, "status_detail": mat.status_detail,
+            "quality_signals": mat.quality_signals or {},
             "document_id": mat.document_id, "num_skills": len(skills),
             "num_banks": len(banks), "approved_banks": approved,
             "created_at": mat.created_at.isoformat() if mat.created_at else None}
@@ -312,7 +316,8 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
                     "accuracy": accuracy, "state": mastery.mastery_state(
                         attempted=attempted, accuracy=accuracy),
                     "exercise_ready": ready,
-                    "bank_questions": bank_questions})
+                    "bank_questions": bank_questions,
+                    "practice_questions": len(counts) * settings.assessment_num_questions if ready else 0})
     return out
 
 
@@ -439,7 +444,7 @@ def help_for_skill(db: Session, *, student_id: str, course_id: str, lesson_id: s
 # ---------------------------------------------------------------- assessments
 def start_platform_assessment(db: Session, *, student: m.User, classroom_id: str | None,
                               material_id: str | None, skill_id: str | None,
-                              child_scope: bool = False) -> dict:
+                              child_scope: bool = False, checkpoint: bool = False) -> dict:
     from sahlha.app.database.repositories import repositories as r
 
     r.get_or_create_student(db, student.id, student.name)
@@ -464,8 +469,10 @@ def start_platform_assessment(db: Session, *, student: m.User, classroom_id: str
         course_id = mapping.course_for_child(student.id)
     if not course_id:
         raise ValueError("Choose a classroom or material before starting practice")
+    if checkpoint and (not material_id or skill_id):
+        raise ValueError("Quick Checks require a material and mixed skills")
     out = legacy.start_assessment(db, student_id=student.id, student_name=student.name,
-                                  course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+                                  course_id=course_id, lesson_id=lesson_id, skill_id=skill_id, learned_only=checkpoint)
     return {k: v for k, v in out.items() if k not in {"trace", "selection_meta"}}
 
 
