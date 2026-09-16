@@ -76,20 +76,26 @@ class _BankReviewScreenState extends ConsumerState<BankReviewScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          '${detail.skillId} · v${detail.version}',
-                          style: text.bodySmall?.copyWith(
-                            color: SahlhaColors.muted,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              detail.skillId,
+                              style: text.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              'v${detail.version} · Question ${safeIndex + 1} of $total',
+                              style: text.bodySmall?.copyWith(
+                                color: SahlhaColors.muted,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       _StatusChip(status: detail.status),
                     ],
-                  ),
-                  const SizedBox(height: SahlhaSpacing.sm),
-                  Text(
-                    'Question ${safeIndex + 1} of $total',
-                    style: text.titleMedium,
                   ),
                   const SizedBox(height: SahlhaSpacing.sm),
                   SahlhaProgressBar(value: (safeIndex + 1) / total, height: 8),
@@ -380,7 +386,22 @@ class _QuestionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: SahlhaSpacing.md),
-          Text(question.question, style: text.titleMedium),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(SahlhaSpacing.md),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              question.question,
+              style: text.bodyMedium?.copyWith(
+                color: Colors.white,
+                fontFamily: 'monospace',
+                height: 1.5,
+              ),
+            ),
+          ),
           const SizedBox(height: SahlhaSpacing.md),
           ...List.generate(opts.length, (i) {
             final isCorrect = i == correct;

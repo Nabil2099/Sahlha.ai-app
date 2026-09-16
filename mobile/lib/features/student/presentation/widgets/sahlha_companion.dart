@@ -2,10 +2,43 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-enum CompanionMood { idle, listening, speaking, celebrating, retry }
+/// Reusable Sahlha avatar moods. `idle/speaking/celebrating` are the core
+/// states; `happy/thinking/encouraging` are gentle expressive variants for
+/// the joyful Student world. `listening/retry` are kept for compatibility.
+enum CompanionMood {
+  idle,
+  listening,
+  speaking,
+  celebrating,
+  retry,
+  happy,
+  thinking,
+  encouraging,
+}
 
-/// Original vector character. A single slow cycle blinks and moves the antenna;
-/// only speech moves the mouth. Reduced motion stops the ticker completely.
+/// Friendly teal robot. Blinks, breathes, sways its antenna; only speech
+/// moves the mouth. Meaningful reactions only — no constant bouncing.
+/// Reduced motion stops the ticker completely.
+enum SahlhaAvatarState {
+  idle,
+  speaking,
+  happy,
+  thinking,
+  encouraging,
+  celebrating,
+}
+
+/// Maps the joyful avatar API onto the underlying companion moods.
+CompanionMood companionMoodFromAvatar(SahlhaAvatarState state) =>
+    switch (state) {
+      SahlhaAvatarState.idle => CompanionMood.idle,
+      SahlhaAvatarState.speaking => CompanionMood.speaking,
+      SahlhaAvatarState.happy => CompanionMood.happy,
+      SahlhaAvatarState.thinking => CompanionMood.thinking,
+      SahlhaAvatarState.encouraging => CompanionMood.encouraging,
+      SahlhaAvatarState.celebrating => CompanionMood.celebrating,
+    };
+
 class SahlhaCompanion extends StatefulWidget {
   const SahlhaCompanion({
     super.key,
@@ -70,13 +103,21 @@ class _CompanionPainter extends CustomPainter {
     c.save();
     c.scale(size.width / 100, size.height / 100);
     final wave = math.sin(phase * math.pi * 2);
-    c.translate(50, 55);
-    c.rotate(wave * .012);
-    c.translate(-50, -55);
-    final teal = Paint()..color = const Color(0xFF149C96);
+    // Gentle squash & stretch: subtle breathing, stronger when celebrating.
+    final celebrating =
+        mood == CompanionMood.celebrating || mood == CompanionMood.happy;
+    final squash = celebrating
+        ? 1 + 0.025 * math.sin(phase * math.pi * 4)
+        : 1 + 0.012 * wave;
+    c.translate(50, 58);
+    c.scale(2 - squash > 1 ? 1 : 1, squash);
+    // Tiny tilt; thinking tilts a touch more.
+    c.rotate(wave * (mood == CompanionMood.thinking ? 0.03 : 0.012));
+    c.translate(-50, -58);
+    // Antenna with soft sway + tip light.
     final antenna = Path()
       ..moveTo(60, 24)
-      ..quadraticBezierTo(66 + wave, 3, 81, 15 + wave);
+      ..quadraticBezierTo(66 + wave * 1.5, 3, 81, 15 + wave * 1.5);
     c.drawPath(
       antenna,
       Paint()
@@ -84,6 +125,16 @@ class _CompanionPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4
         ..strokeCap = StrokeCap.round,
+    );
+    c.drawCircle(
+      Offset(81, 15 + wave * 1.5),
+      4.2,
+      Paint()..color = const Color(0xFFFFC94A),
+    );
+    c.drawCircle(
+      Offset(81, 15 + wave * 1.5),
+      2.0,
+      Paint()..color = const Color(0xFFFFF3D1),
     );
     c.drawOval(
       const Rect.fromLTWH(9, 23, 81, 70),
@@ -106,37 +157,94 @@ class _CompanionPainter extends CustomPainter {
       Paint()..color = const Color(0xFF193B4A),
     );
     final blink = phase > .91 && phase < .94;
+    // Eye expressions per mood: happy/celebrating = joyful arcs,
+    // thinking = slightly narrowed, encouraging = bright.
+    final eyeH = blink
+        ? 2.0
+        : switch (mood) {
+            CompanionMood.celebrating => 6.0,
+            CompanionMood.happy => 7.0,
+            CompanionMood.encouraging => 11.0,
+            CompanionMood.thinking => 8.0,
+            _ => 10.0,
+          };
     for (final x in [38.0, 61.0]) {
-      c.drawOval(
-        Rect.fromCenter(
-          center: Offset(x, 53),
-          width: 9,
-          height: blink ? 2 : (mood == CompanionMood.celebrating ? 6 : 10),
-        ),
-        Paint()..color = Colors.white,
-      );
-      if (!blink) {
-        c.drawCircle(
-          Offset(x + 1, 51),
-          1.7,
-          Paint()..color = const Color(0xFFB6F1ED),
+      if ((mood == CompanionMood.happy || mood == CompanionMood.celebrating) &&
+          !blink) {
+        // Joyful closed-eye arcs.
+        c.drawArc(
+          Rect.fromCenter(center: Offset(x, 54), width: 11, height: 8),
+          math.pi,
+          math.pi,
+          false,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.6
+            ..strokeCap = StrokeCap.round,
         );
+      } else {
+        c.drawOval(
+          Rect.fromCenter(center: Offset(x, 53), width: 9, height: eyeH),
+          Paint()..color = Colors.white,
+        );
+        if (!blink) {
+          c.drawCircle(
+            Offset(x + 1, 51),
+            1.7,
+            Paint()..color = const Color(0xFFB6F1ED),
+          );
+        }
       }
     }
-    final opening = mood == CompanionMood.speaking
-        ? 2 + 5 * math.sin(phase * math.pi * 48).abs()
-        : 2.0;
+    // Mouth: only speaking animates (believable cycle from player state,
+    // no extra network). Others are gentle static shapes.
+    final double opening;
+    final double mouthW;
+    switch (mood) {
+      case CompanionMood.speaking:
+        opening = 2 + 6 * math.sin(phase * math.pi * 48).abs();
+        mouthW = 10;
+        break;
+      case CompanionMood.happy:
+      case CompanionMood.celebrating:
+      case CompanionMood.encouraging:
+        opening = 5.5;
+        mouthW = 13;
+        break;
+      case CompanionMood.thinking:
+        opening = 2.2;
+        mouthW = 7;
+        break;
+      case CompanionMood.retry:
+        opening = 2.0;
+        mouthW = 7;
+        break;
+      case CompanionMood.listening:
+      case CompanionMood.idle:
+        opening = 2.4;
+        mouthW = 10;
+        break;
+    }
     c.drawOval(
       Rect.fromCenter(
         center: const Offset(49, 66),
-        width: mood == CompanionMood.retry ? 7 : 10,
+        width: mouthW,
         height: opening,
       ),
       Paint()..color = const Color(0xFFD7F9F2),
     );
-    c.drawOval(const Rect.fromLTWH(13, 69, 17, 16), teal);
-    c.drawOval(const Rect.fromLTWH(68, 71, 17, 15), teal);
-    if (mood == CompanionMood.celebrating) {
+    // Rosy cheeks for warmth.
+    c.drawOval(
+      const Rect.fromLTWH(13, 69, 17, 16),
+      Paint()..color = const Color(0xFF149C96).withValues(alpha: 0.9),
+    );
+    c.drawOval(
+      const Rect.fromLTWH(68, 71, 17, 15),
+      Paint()..color = const Color(0xFF149C96).withValues(alpha: 0.9),
+    );
+    if (mood == CompanionMood.celebrating ||
+        mood == CompanionMood.encouraging) {
       for (final p in [const Offset(9, 15), const Offset(90, 35)]) {
         c.drawPath(
           Path()
@@ -152,6 +260,11 @@ class _CompanionPainter extends CustomPainter {
           Paint()..color = const Color(0xFFFFBF33),
         );
       }
+    }
+    if (mood == CompanionMood.thinking) {
+      // Thoughtful brow dots.
+      c.drawCircle(const Offset(38, 45), 1.6, Paint()..color = Colors.white);
+      c.drawCircle(const Offset(61, 45), 1.6, Paint()..color = Colors.white);
     }
     if (mood == CompanionMood.listening) {
       c.drawArc(

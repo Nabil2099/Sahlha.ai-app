@@ -363,68 +363,117 @@ class EffortChip extends StatelessWidget {
 
 // --------------------------------------------------------------- daily goal
 
-/// 'One learning step today' — the whole daily-goal system on one calm card.
+/// 'One learning step today' — joyful goal card matching the reference.
+/// Gentle progress animation, calm supportive copy, reduced-motion safe.
 class DailyGoalCard extends StatelessWidget {
   const DailyGoalCard({super.key, required this.goal});
 
   final DailyGoal goal;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text("Today\u2019s goal", style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 10),
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: SahlhaShadows.soft,
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Today\u2019s goal",
+          style: text.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  backgroundColor: SahlhaColors.tealSoft,
-                  child: Icon(
-                    Icons.track_changes,
-                    color: SahlhaColors.tealDark,
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: SahlhaColors.borderSubtle),
+            boxShadow: SahlhaShadows.soft,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: goal.doneToday
+                          ? SahlhaColors.successSoft
+                          : SahlhaColors.warmYellowSoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      goal.doneToday
+                          ? Icons.check_circle_rounded
+                          : Icons.track_changes_rounded,
+                      color: goal.doneToday
+                          ? SahlhaColors.success
+                          : SahlhaColors.warmYellowDeep,
+                      size: 26,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(goal.hasStep ? '1 learning step today' : goal.title),
-                      const SizedBox(height: 4),
-                      Text(
-                        goal.doneToday
-                            ? '1 of 1 completed'
-                            : '0 of 1 completed',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          goal.hasStep ? '1 learning step today' : goal.title,
+                          style: text.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          goal.doneToday
+                              ? '1 of 1 completed'
+                              : '0 of 1 completed',
+                          style: text.bodySmall?.copyWith(
+                            color: SahlhaColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                minHeight: 7,
-                value: goal.doneToday ? 1 : 0,
-                backgroundColor: SahlhaColors.tealSoft,
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: goal.doneToday ? 1.0 : 0.0),
+                  duration: reduced
+                      ? Duration.zero
+                      : const Duration(milliseconds: 600),
+                  curve: Curves.easeOut,
+                  builder: (_, v, _) => LinearProgressIndicator(
+                    minHeight: 10,
+                    value: v,
+                    backgroundColor: SahlhaColors.tealSoft,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      goal.doneToday
+                          ? SahlhaColors.success
+                          : SahlhaColors.joyTeal,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                goal.message,
+                style: text.bodySmall?.copyWith(
+                  color: SahlhaColors.muted,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 // ---------------------------------------------------------- why practice?

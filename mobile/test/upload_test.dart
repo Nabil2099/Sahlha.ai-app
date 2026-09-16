@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sahlha/core/widgets/sahlha_widgets.dart';
+import 'package:sahlha/features/classrooms/data/classroom_repository.dart';
 import 'package:sahlha/features/materials/data/material_repository.dart';
 import 'package:sahlha/features/materials/presentation/material_upload_screen.dart';
 import 'package:sahlha/features/materials/presentation/upload_controller.dart';
@@ -49,7 +50,15 @@ void main() {
   ) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [uploadControllerProvider.overrideWith(PickedUpload.new)],
+        overrides: [
+          uploadControllerProvider.overrideWith(PickedUpload.new),
+          classroomListProvider.overrideWith(
+            (ref) async => const [],
+          ),
+          materialListProvider.overrideWith(
+            (ref, arg) async => const [],
+          ),
+        ],
         child: const MaterialApp(
           home: MaterialUploadScreen(classroomId: 'classroom'),
         ),

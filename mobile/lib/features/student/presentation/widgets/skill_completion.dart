@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/sahlha_colors.dart';
 import '../../../../core/widgets/sahlha_widgets.dart';
 import '../../data/student_repository.dart';
 import '../journey_presentation.dart';
 import '../practice_controller.dart';
-import 'sahlha_companion.dart';
+import 'joyful_cards.dart';
+import 'playful_background.dart';
+import 'sahlha_avatar.dart';
 
 class SkillCompletion extends ConsumerWidget {
   const SkillCompletion({
@@ -55,130 +56,133 @@ class SkillCompletion extends ConsumerWidget {
       (id) => result.masteryStates[id] == 'mastered',
     );
     final text = Theme.of(context).textTheme;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-      children: [
-        Center(
-          child: SahlhaCompanion(
-            size: 120,
-            mood: mastered ? CompanionMood.celebrating : CompanionMood.retry,
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    return PlayfulBackground(
+      variant: PlayfulVariant.completion,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        children: [
+          Center(
+            child: SahlhaAvatar(
+              size: 130,
+              state: mastered
+                  ? SahlhaAvatarState.celebrating
+                  : SahlhaAvatarState.encouraging,
+              label: 'Sahlha celebrating your work',
+            ),
           ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          'Nice work!',
-          textAlign: TextAlign.center,
-          style: text.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          titles.isEmpty
-              ? 'You completed your practice'
-              : touched.every((id) => result.masteryStates[id] == 'mastered')
-              ? 'You completed\n$titles'
-              : 'You practiced\n$titles',
-          textAlign: TextAlign.center,
-          style: text.titleMedium,
-        ),
-        const SizedBox(height: 26),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+          const SizedBox(height: 12),
+          Text(
+            'Nice work!',
+            textAlign: TextAlign.center,
+            style: text.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Stat(Icons.assignment_outlined, '${result.total}', 'Questions'),
-              _Stat(
-                Icons.check_circle,
-                '${result.correct}/${result.total}',
-                'Correct',
+          const SizedBox(height: 6),
+          Text(
+            'You completed\n${titles.isEmpty ? 'your practice' : titles}',
+            textAlign: TextAlign.center,
+            style: text.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.4,
+            ),
+          ),
+          // Keep exact stats strings for tests: total, correct/total, time.
+          const SizedBox(height: 20),
+          SkillCompletionSummary(
+            questions: result.total,
+            correct: result.correct,
+            elapsed: elapsed,
+          ),
+          const SizedBox(height: 18),
+          _Recap(
+            icon: Icons.lightbulb_outline_rounded,
+            title: 'You learned',
+            body: practiced.isEmpty
+                ? 'You worked through ${result.total} ${result.total == 1 ? "question" : "questions"}.'
+                : practiced
+                      .map(
+                        (s) => cleanStudentText(s.skill.description).isEmpty
+                            ? s.title
+                            : cleanStudentText(s.skill.description),
+                      )
+                      .join('\n'),
+            color: const Color(0xFFFFF3D1),
+          ),
+          _Recap(
+            icon: Icons.star_outline_rounded,
+            title: 'You handled well',
+            body: handled.isEmpty
+                ? 'You gave yourself time to practice.'
+                : handled.map((s) => s.title).join(', '),
+            color: const Color(0xFFFFF3D1),
+          ),
+          if (review.isNotEmpty)
+            _Recap(
+              icon: Icons.refresh_rounded,
+              title: 'Practice again later',
+              body: review.map((s) => s.title).join(', '),
+              color: const Color(0xFFDFFBF8),
+            )
+          else
+            const _Recap(
+              icon: Icons.favorite_outline_rounded,
+              title: 'Keep exploring',
+              body: 'You\u2019re building real skills. Rest, or explore your path a little more.',
+              color: Color(0xFFDFFBF8),
+            ),
+          const SizedBox(height: 12),
+          if (!reduced)
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.94, end: 1),
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutBack,
+              builder: (_, v, child) => Transform.scale(scale: v, child: child),
+              child: _Cta(
+                next: next,
+                touched: touched,
+                onPath: onPath,
+                state: state,
               ),
-              _Stat(
-                Icons.timer_outlined,
-                '${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}',
-                'Time',
-              ),
-            ],
+            )
+          else
+            _Cta(next: next, touched: touched, onPath: onPath, state: state),
+          TextButton(
+            onPressed: onRetry,
+            child: const Text('Revisit this practice'),
           ),
-        ),
-        const SizedBox(height: 22),
-        _Recap(
-          icon: Icons.lightbulb_outline,
-          title: 'You learned',
-          body: practiced.isEmpty
-              ? 'You worked through ${result.total} ${result.total == 1 ? "question" : "questions"}.'
-              : practiced
-                    .map(
-                      (s) => cleanStudentText(s.skill.description).isEmpty
-                          ? s.title
-                          : cleanStudentText(s.skill.description),
-                    )
-                    .join('\n'),
-          color: const Color(0xFFFFEABB),
-        ),
-        _Recap(
-          icon: Icons.star_outline_rounded,
-          title: 'You handled well',
-          body: handled.isEmpty
-              ? 'You gave yourself time to practice.'
-              : handled.map((s) => s.title).join(', '),
-          color: const Color(0xFFFFEABB),
-        ),
-        _Recap(
-          icon: Icons.refresh,
-          title: 'Practice again later',
-          body: review.isEmpty
-              ? 'Revisit these ideas whenever you need a reminder.'
-              : review.map((s) => s.title).join(', '),
-          color: const Color(0xFFCFEFF4),
-        ),
-        const SizedBox(height: 16),
-        SahlhaPrimaryButton(
-          label: next == null
-              ? 'Continue my learning path'
-              : touched.contains(next.skill.skillId)
-              ? 'Continue learning'
-              : 'Continue to next skill',
-          onPressed: next == null
-              ? onPath
-              : () => context.go(
-                  lessonLocation(
-                    next,
-                    classroomId: state.classroomId,
-                    supplementary: state.childScope,
-                  ),
-                ),
-        ),
-        TextButton(
-          onPressed: onRetry,
-          child: const Text('Revisit this practice'),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat(this.icon, this.value, this.label);
-  final IconData icon;
-  final String value, label;
+class _Cta extends StatelessWidget {
+  const _Cta({
+    required this.next,
+    required this.touched,
+    required this.onPath,
+    required this.state,
+  });
+  final JourneyStep? next;
+  final Set<String> touched;
+  final VoidCallback onPath;
+  final PracticeState state;
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: Column(
-      children: [
-        Icon(icon, color: SahlhaColors.success, size: 21),
-        const SizedBox(height: 5),
-        Text(value, style: Theme.of(context).textTheme.titleMedium),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => SahlhaPrimaryButton(
+    label: next == null
+        ? 'Continue my learning path'
+        : touched.contains(next!.skill.skillId)
+        ? 'Continue learning'
+        : 'Continue to next skill →',
+    onPressed: next == null
+        ? onPath
+        : () => context.go(
+            lessonLocation(
+              next!,
+              classroomId: state.classroomId,
+              supplementary: state.childScope,
+            ),
+          ),
   );
 }
 
@@ -193,28 +197,44 @@ class _Recap extends StatelessWidget {
   final String title, body;
   final Color color;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 21,
-          backgroundColor: color,
-          child: Icon(icon, color: SahlhaColors.tealDark),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 5),
-              Text(body, style: Theme.of(context).textTheme.bodyMedium),
-            ],
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7E1D4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: const Color(0xFF0B6E64), size: 22),
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(body, style: text.bodyMedium?.copyWith(height: 1.55)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -1,4 +1,6 @@
+import 'widgets/joyful_cards.dart';
 import 'widgets/lesson_content.dart';
+import 'widgets/playful_background.dart';
 import 'widgets/quick_check_intro.dart';
 import 'widgets/skill_completion.dart';
 
@@ -6,19 +8,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/sahlha_colors.dart';
 import '../../../core/widgets/sahlha_widgets.dart'
     show
         SahlhaAppBar,
-        SahlhaProgressBar,
         SahlhaPrimaryButton,
         ErrorState,
         EmptyState,
-        LoadingState,
-        InlineFeedback;
+        LoadingState;
 import 'practice_controller.dart';
-import 'journey_presentation.dart';
-import 'widgets/learning_journey.dart' show StudentCanvas, JourneyEyebrow;
+import 'journey_presentation.dart' show cleanStudentText, learningLocation;
+import 'widgets/learning_journey.dart' show StudentCanvas;
 
 class PracticeScreen extends ConsumerStatefulWidget {
   const PracticeScreen({
@@ -110,175 +109,199 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
         title: state.result != null ? 'Your next step' : title,
         onBack: _back,
       ),
-      body: StudentCanvas(
-        child: SafeArea(
-          child: Builder(
-            builder: (context) {
-              if (widget.mode == 'checkpoint' && _intro) {
-                return QuickCheckIntro(
-                  classroomId: widget.classroomId,
-                  materialId: widget.materialId,
-                  supplementary: widget.supplementary,
-                  onStart: () {
-                    setState(() => _intro = false);
-                    _start();
-                  },
-                );
-              }
-              if (state.starting) {
-                return const LoadingState(
-                  message: 'Preparing a little practice…',
-                );
-              }
-              if (state.error != null && state.questions.isEmpty) {
-                return ErrorState(message: state.error!, onRetry: _start);
-              }
-              if (state.result != null) return _feedback(context, state);
-              if (state.current == null) {
-                return SingleChildScrollView(
-                  child: EmptyState(
-                    title: 'Practice is being prepared.',
-                    message: 'Return to your learning path for another step.',
-                    action: SahlhaPrimaryButton(
-                      label: 'Back to my path',
-                      onPressed: _path,
-                    ),
-                  ),
-                );
-              }
-              final q = state.current!;
-              final check = state.checked[q.id];
-              final selected = state.answers[q.id];
-              final valid =
-                  selected != null &&
-                  (selected is! String || selected.trim().isNotEmpty);
-              return ListView(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-                children: [
-                  JourneyEyebrow(
-                    'QUESTION ${state.index + 1} OF ${state.questions.length}',
-                  ),
-                  const SizedBox(height: 12),
-                  SahlhaProgressBar(
-                    value: (state.index + 1) / state.questions.length,
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(26),
-                      border: Border.all(color: SahlhaColors.line),
-                    ),
-                    child: LessonContent(source: q.question, question: true),
-                  ),
-                  const SizedBox(height: 20),
-                  if (q.options.isNotEmpty)
-                    for (var i = 0; i < q.options.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _AnswerOption(
-                          label: cleanStudentText(q.options[i]),
-                          index: i,
-                          selected: selected == i,
-                          correct:
-                              check != null &&
-                              (check.correctAnswer == i ||
-                                  (check.correct && selected == i)),
-                          onTap: check != null || state.checking
-                              ? null
-                              : () async {
-                                  controller.answerCurrent(i);
-                                  await controller.checkCurrent();
-                                },
-                        ),
-                      )
-                  else
-                    TextField(
-                      controller: _answer,
-                      enabled: check == null && !state.checking,
-                      minLines: 2,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'Your answer',
-                        hintText: 'Write what you think',
-                      ),
-                      onChanged: controller.answerCurrent,
-                    ),
-                  if (state.error != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: Text(state.error!, style: text.bodyMedium),
+      body: PlayfulBackground(
+        variant: PlayfulVariant.practice,
+        child: StudentCanvas(
+          child: SafeArea(
+            child: Builder(
+              builder: (context) {
+                if (widget.mode == 'checkpoint' && _intro) {
+                  return QuickCheckIntro(
+                    classroomId: widget.classroomId,
+                    materialId: widget.materialId,
+                    supplementary: widget.supplementary,
+                    onStart: () {
+                      setState(() => _intro = false);
+                      _start();
+                    },
+                  );
+                }
+                if (state.starting) {
+                  return const LoadingState(
+                    message: 'Preparing a little practice…',
+                  );
+                }
+                if (state.error != null && state.questions.isEmpty) {
+                  return ErrorState(message: state.error!, onRetry: _start);
+                }
+                if (state.result != null) return _feedback(context, state);
+                if (state.current == null) {
+                  return SingleChildScrollView(
+                    child: EmptyState(
+                      title: 'Practice is being prepared.',
+                      message: 'Return to your learning path for another step.',
+                      action: SahlhaPrimaryButton(
+                        label: 'Back to my path',
+                        onPressed: _path,
                       ),
                     ),
-                  if (check != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: InlineFeedback(
-                          correct: check.correct,
-                          message: cleanStudentText(check.explanation).isEmpty
-                              ? (check.correct
-                                    ? 'You’ve got the idea.'
-                                    : 'Keep this idea in mind for the next question.')
-                              : cleanStudentText(check.explanation),
-                        ),
+                  );
+                }
+                final q = state.current!;
+                final check = state.checked[q.id];
+                final selected = state.answers[q.id];
+                final valid =
+                    selected != null &&
+                    (selected is! String || selected.trim().isNotEmpty);
+                return ListView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    PracticeProgressHeader(
+                      title: title,
+                      index: state.index,
+                      total: state.questions.length,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'What will this code print?',
+                      style: text.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
                       ),
                     ),
-                  if (state.checking)
-                    const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text(
-                        'Checking your answer...',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  if (state.supportLevel > 0 && check == null)
+                    const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.all(18),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: SahlhaColors.sunSoft,
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xFFE7E1D4)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF22313F)
+                                .withValues(alpha: 0.05),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
                       ),
-                      child: const Text(
-                        'Read one part at a time. What is the question asking you to find?',
-                      ),
+                      child: LessonContent(source: q.question, question: true),
                     ),
-                  const SizedBox(height: 18),
-                  if (check == null) ...[
-                    if (q.options.isEmpty || state.error != null)
+                    const SizedBox(height: 16),
+                    if (q.options.isNotEmpty)
+                      for (var i = 0; i < q.options.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: AnswerOptionCard(
+                            label: cleanStudentText(q.options[i]),
+                            index: i,
+                            selected: selected == i,
+                            correct: check != null
+                                ? (check.correctAnswer == i ||
+                                      (check.correct && selected == i))
+                                : null,
+                            onTap: check != null || state.checking
+                                ? null
+                                : () async {
+                                    controller.answerCurrent(i);
+                                    await controller.checkCurrent();
+                                  },
+                          ),
+                        )
+                    else
+                      TextField(
+                        controller: _answer,
+                        enabled: check == null && !state.checking,
+                        minLines: 2,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Your answer',
+                          hintText: 'Write what you think',
+                        ),
+                        onChanged: controller.answerCurrent,
+                      ),
+                    if (state.error != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(state.error!, style: text.bodyMedium),
+                        ),
+                      ),
+                    if (check != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: FeedbackCard(
+                            correct: check.correct,
+                            message: cleanStudentText(check.explanation).isEmpty
+                                ? (check.correct
+                                      ? 'The loop runs while the condition is true — nice reading!'
+                                      : 'Keep this idea in mind for the next question. You\u2019re getting closer.')
+                                : cleanStudentText(check.explanation),
+                          ),
+                        ),
+                      ),
+                    if (state.checking)
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          'Checking your answer...',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    if (state.supportLevel > 0 && check == null)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3D1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFFFFC94A)
+                                .withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: const Text(
+                          'Read one part at a time. What is the question asking you to find?',
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    if (check == null) ...[
+                      if (q.options.isEmpty || state.error != null)
+                        SahlhaPrimaryButton(
+                          label: 'Check answer',
+                          loading: state.checking,
+                          onPressed: valid ? controller.checkCurrent : null,
+                        ),
+                      TextButton.icon(
+                        onPressed: controller.requestSupportHint,
+                        icon: const Icon(
+                          Icons.lightbulb_outline_rounded,
+                          size: 20,
+                        ),
+                        label: const Text('A little hint'),
+                      ),
+                    ] else
                       SahlhaPrimaryButton(
-                        label: 'Check answer',
-                        loading: state.checking,
-                        onPressed: valid ? controller.checkCurrent : null,
+                        label: state.isLast
+                            ? 'Finish practice'
+                            : 'Next question →',
+                        loading: state.submitting,
+                        onPressed: state.isLast
+                            ? controller.submit
+                            : () {
+                                _answer.clear();
+                                controller.next();
+                                try {
+                                  _scroll.jumpTo(0);
+                                } catch (_) {}
+                              },
                       ),
-                    TextButton.icon(
-                      onPressed: controller.requestSupportHint,
-                      icon: const Icon(
-                        Icons.lightbulb_outline_rounded,
-                        size: 20,
-                      ),
-                      label: const Text('A little hint'),
-                    ),
-                  ] else
-                    SahlhaPrimaryButton(
-                      label: state.isLast ? 'Finish practice' : 'Next question',
-                      loading: state.submitting,
-                      onPressed: state.isLast
-                          ? controller.submit
-                          : () {
-                              _answer.clear();
-                              controller.next();
-                              _scroll.jumpTo(0);
-                            },
-                    ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -292,77 +315,4 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
         onPath: _path,
         onRetry: _start,
       );
-}
-
-class _AnswerOption extends StatelessWidget {
-  const _AnswerOption({
-    required this.label,
-    required this.index,
-    required this.selected,
-    required this.correct,
-    this.onTap,
-  });
-  final String label;
-  final int index;
-  final bool selected, correct;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    button: true,
-    enabled: onTap != null,
-    child: Material(
-      color: selected || correct ? SahlhaColors.tealSoft : Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: selected || correct
-              ? SahlhaColors.tealDark
-              : SahlhaColors.line,
-          width: selected ? 2 : 1,
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: SahlhaColors.cream,
-                  shape: BoxShape.circle,
-                ),
-                child: correct
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 19,
-                        color: SahlhaColors.tealDark,
-                      )
-                    : Icon(
-                        selected
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        size: 22,
-                        color: SahlhaColors.tealDark,
-                      ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyLarge
-                      ?.copyWith(height: 1.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

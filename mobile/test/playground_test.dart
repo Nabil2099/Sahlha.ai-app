@@ -33,7 +33,8 @@ void main() {
     );
     expect(find.text('i = 1'), findsWidgets);
     await tester.pump(const Duration(seconds: 10));
-    expect(find.text('Step 1 of 9'), findsOneWidget);
+    // i=1 while i<3 yields 8 safe frames (init + 2×3 steps + exit).
+    expect(find.text('Step 1 of 8'), findsOneWidget);
     await tester.tap(find.text('Run'));
     await tester.pumpAndSettle();
     expect(find.text('1 < 3 is true: repeat.'), findsOneWidget);

@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/sahlha_colors.dart';
 import '../journey_presentation.dart';
 
-const _ink = SahlhaColors.ink;
 const _teal = SahlhaColors.tealDark;
 
 class StudentCanvas extends StatelessWidget {
@@ -114,22 +113,67 @@ class LearningUnitHeader extends StatelessWidget {
   /// back to the book mark.
   final String subject;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(unit.title, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 5),
-        Text(
-          'Unit ${unit.number} / ${unit.mastered} of ${unit.steps.length} mastered',
-          style: Theme.of(context).textTheme.bodySmall,
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: SahlhaColors.borderSubtle),
+          boxShadow: SahlhaShadows.soft,
         ),
-        const SizedBox(height: 10),
-        UnitProgressBar(completed: unit.mastered, total: unit.steps.length),
-      ],
-    ),
-  );
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: SahlhaColors.aquaSoft,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.route_rounded,
+                    color: SahlhaColors.joyTealDark,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        unit.title,
+                        style: text.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Unit ${unit.number} · ${unit.mastered} / ${unit.steps.length} skills completed',
+                        style: text.bodySmall?.copyWith(
+                          color: SahlhaColors.joyTealDark,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            UnitProgressBar(completed: unit.mastered, total: unit.steps.length),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class CurrentSkillCard extends StatelessWidget {
@@ -155,106 +199,209 @@ class CurrentSkillCard extends StatelessWidget {
   final int questions;
   final int? minutes;
   @override
-  Widget build(BuildContext context) => Material(
-    color: const Color(0xFFE5F6F3),
-    borderRadius: BorderRadius.circular(22),
-    child: InkWell(
-      onTap: onTap ?? onContinue,
-      borderRadius: BorderRadius.circular(22),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    contextLabel,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                const Icon(
-                  Icons.subdirectory_arrow_left,
-                  size: 18,
-                  color: _teal,
-                ),
-              ],
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Material(
+      borderRadius: BorderRadius.circular(26),
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap ?? onContinue,
+        borderRadius: BorderRadius.circular(26),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFDFFBF6), Color(0xFFB9EEE5)],
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
+            border: Border.all(
+              color: SahlhaColors.aqua.withValues(alpha: 0.55),
+            ),
+            boxShadow: SahlhaShadows.soft,
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -28,
+                top: -28,
+                child: Container(
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF009D98),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: const Icon(
-                    Icons.auto_stories_outlined,
-                    color: Colors.white,
+                    color: Colors.white.withValues(alpha: 0.35),
+                    shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              Positioned(
+                right: 36,
+                bottom: -36,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: SahlhaColors.warmYellow.withValues(alpha: 0.28),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (subtitle.isNotEmpty)
-                        Text(
-                          subtitle,
-                          style: Theme.of(context).textTheme.bodySmall,
+                      Expanded(
+                        child: Text(
+                          contextLabel,
+                          style: text.titleSmall?.copyWith(
+                            color: SahlhaColors.joyTealDark,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
+                      ),
+                      const Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 18,
+                        color: SahlhaColors.joyTealDark,
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.play_circle_fill, color: _teal, size: 32),
-              ],
-            ),
-            if (minutes != null || questions > 0) ...[
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  if (minutes != null)
-                    _MetaPill(Icons.headphones_outlined, '~$minutes min'),
-                  if (questions > 0)
-                    _MetaPill(
-                      Icons.assignment_outlined,
-                      '$questions questions',
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: SahlhaColors.joyTeal,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.auto_stories_outlined,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: text.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (subtitle.isNotEmpty)
+                              Text(
+                                subtitle,
+                                style: text.bodySmall?.copyWith(
+                                  color: SahlhaColors.ink.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
+                              ),
+                            if (effort != null)
+                              Text(
+                                effort!,
+                                style: text.bodySmall?.copyWith(
+                                  color: SahlhaColors.joyTealDark,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: const BoxDecoration(
+                          color: SahlhaColors.joyTeal,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (minutes != null || questions > 0) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (minutes != null)
+                          _MetaPill(Icons.schedule_outlined, '~$minutes min'),
+                        if (questions > 0)
+                          _MetaPill(
+                            Icons.assignment_outlined,
+                            '$questions questions',
+                          ),
+                        if (started)
+                          const _MetaPill(
+                            Icons.bolt_outlined,
+                            'In progress',
+                            highlight: true,
+                          ),
+                      ],
                     ),
+                  ],
+                  if (progress != null) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress!.clamp(0.0, 1.0),
+                        minHeight: 8,
+                        backgroundColor: Colors.white.withValues(alpha: 0.7),
+                        valueColor: const AlwaysStoppedAnimation(
+                          SahlhaColors.joyTeal,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ],
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _MetaPill extends StatelessWidget {
-  const _MetaPill(this.icon, this.label);
+  const _MetaPill(this.icon, this.label, {this.highlight = false});
   final IconData icon;
   final String label;
+  final bool highlight;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .85),
+      color: highlight
+          ? SahlhaColors.warmYellowSoft
+          : Colors.white.withValues(alpha: .92),
       borderRadius: BorderRadius.circular(12),
+      border: highlight
+          ? Border.all(color: SahlhaColors.warmYellow.withValues(alpha: 0.6))
+          : null,
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 15, color: _teal),
+        Icon(
+          icon,
+          size: 15,
+          color: highlight ? SahlhaColors.warmYellowDeep : _teal,
+        ),
         const SizedBox(width: 6),
         Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
@@ -294,61 +441,118 @@ class LearningPathNode extends StatelessWidget {
     final completed = step.state == JourneyState.completed;
     final locked = step.state == JourneyState.locked;
     final current = step.state == JourneyState.current;
+    final reduced =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    final node = AnimatedContainer(
+      duration: reduced ? Duration.zero : const Duration(milliseconds: 300),
+      width: current ? 60 : 54,
+      height: current ? 60 : 54,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: completed
+            ? SahlhaColors.joyTeal
+            : current
+            ? SahlhaColors.warmYellow
+            : locked
+            ? const Color(0xFFF1F5F9)
+            : Colors.white,
+        border: Border.all(
+          color: completed
+              ? SahlhaColors.joyTealDark
+              : current
+              ? SahlhaColors.joyTeal
+              : selected
+              ? SahlhaColors.joyTeal
+              : const Color(0xFFDEE2E5),
+          width: current ? 3.5 : 2.2,
+        ),
+        boxShadow: current && !reduced
+            ? [
+                BoxShadow(
+                  color: SahlhaColors.warmYellow.withValues(alpha: 0.55),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+                ...SahlhaShadows.soft,
+              ]
+            : selected
+            ? SahlhaShadows.soft
+            : null,
+      ),
+      child: AnimatedSwitcher(
+        duration: reduced ? Duration.zero : const Duration(milliseconds: 280),
+        child: Icon(
+          key: ValueKey('${step.state.name}-$selected'),
+          completed
+              ? Icons.check_rounded
+              : locked
+              ? Icons.lock_outline_rounded
+              : current
+              ? Icons.lightbulb_rounded
+              : Icons.lightbulb_outline_rounded,
+          color: completed
+              ? Colors.white
+              : current
+              ? SahlhaColors.warmYellowDeep
+              : locked
+              ? SahlhaColors.muted
+              : SahlhaColors.joyTealDark,
+          size: current ? 28 : 24,
+        ),
+      ),
+    );
+
+    Widget circle = node;
+    // Gentle pulse for the current skill only (disabled with reduced motion).
+    if (current && !reduced) {
+      circle = TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 1800),
+        builder: (_, v, child) {
+          // Subtle repeating glow via parent Stateful? Use static glow here;
+          // the LearningPath rebuilds on selection so this stays calm.
+          return child!;
+        },
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: SahlhaColors.joyTeal.withValues(alpha: 0.25),
+              width: 3,
+            ),
+          ),
+          child: node,
+        ),
+      );
+    }
+
     return Semantics(
       selected: selected,
       button: true,
       label: '${step.title}, ${step.state.name}',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         child: AnimatedContainer(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 280),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          duration: reduced ? Duration.zero : const Duration(milliseconds: 280),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
           decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+            color: selected
+                ? Colors.white
+                : current
+                ? SahlhaColors.warmYellowSoft.withValues(alpha: 0.5)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(22),
+            border: selected
+                ? Border.all(color: SahlhaColors.tealSoft, width: 1.5)
+                : null,
             boxShadow: selected ? SahlhaShadows.soft : null,
           ),
           child: Row(
             children: [
-              AnimatedContainer(
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 300),
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: completed
-                      ? const Color(0xFF009F98)
-                      : current
-                      ? SahlhaColors.sun
-                      : const Color(0xFFF4F5F6),
-                  border: Border.all(
-                    color: selected || current
-                        ? _teal
-                        : completed
-                        ? const Color(0xFFBDEAE1)
-                        : const Color(0xFFDEE2E5),
-                    width: 2,
-                  ),
-                ),
-                child: Icon(
-                  completed
-                      ? Icons.check_rounded
-                      : locked
-                      ? Icons.lock_outline_rounded
-                      : Icons.lightbulb_outline_rounded,
-                  color: completed
-                      ? Colors.white
-                      : current
-                      ? const Color(0xFF956300)
-                      : _ink,
-                  size: 24,
-                ),
-              ),
+              circle,
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -356,14 +560,47 @@ class LearningPathNode extends StatelessWidget {
                   children: [
                     Text(
                       step.title,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: current || selected
+                            ? FontWeight.w800
+                            : FontWeight.w700,
+                        color: locked ? SahlhaColors.muted : SahlhaColors.ink,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    SkillStatusIndicator(state: step.state),
-                    if (current && step.skill.practiceQuestions > 0)
-                      Text(
-                        '${step.skill.practiceQuestions} questions',
-                        style: Theme.of(context).textTheme.bodySmall,
+                    if (current)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: SahlhaColors.joyTeal,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          'Next up',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      )
+                    else
+                      SkillStatusIndicator(state: step.state),
+                    if (step.skill.practiceQuestions > 0 &&
+                        (current || selected))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          '${step.skill.practiceQuestions} questions',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: SahlhaColors.muted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
                       ),
                   ],
                 ),
@@ -397,6 +634,7 @@ class LearningPathSkillBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final reduced = MediaQuery.disableAnimationsOf(context);
     final (eyebrow, message, cta, ctaIcon) = switch (step.state) {
       JourneyState.completed => (
         'COMPLETED',
@@ -425,62 +663,111 @@ class LearningPathSkillBlock extends StatelessWidget {
         Icons.lock_outline_rounded,
       ),
     };
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(left: 64),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: SahlhaColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: SahlhaColors.tealSoft),
-        boxShadow: SahlhaShadows.soft,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: JourneyEyebrow(eyebrow)),
-              Icon(
-                switch (step.state) {
-                  JourneyState.completed => Icons.check_circle_rounded,
-                  JourneyState.locked => Icons.lock_outline_rounded,
-                  _ => Icons.play_circle_outline_rounded,
-                },
-                color: SahlhaColors.tealDark,
-                size: 26,
-              ),
-            ],
+    final accent = switch (step.state) {
+      JourneyState.completed => SahlhaColors.joyTeal,
+      JourneyState.current => SahlhaColors.joyTeal,
+      JourneyState.available => SahlhaColors.skyDark,
+      JourneyState.locked => SahlhaColors.muted,
+    };
+    return AnimatedSize(
+      duration: reduced ? Duration.zero : const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+      child: AnimatedContainer(
+        duration: reduced ? Duration.zero : const Duration(milliseconds: 280),
+        width: double.infinity,
+        margin: const EdgeInsets.only(left: 64),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: step.state == JourneyState.current
+              ? SahlhaColors.warmYellowSoft.withValues(alpha: 0.6)
+              : SahlhaColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: step.state == JourneyState.current
+                ? SahlhaColors.warmYellow
+                : SahlhaColors.tealSoft,
+            width: 1.5,
           ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            style: text.bodyMedium?.copyWith(
-              color: SahlhaColors.muted,
-              height: 1.5,
+          boxShadow: SahlhaShadows.soft,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: JourneyEyebrow(eyebrow, color: accent)),
+                AnimatedSwitcher(
+                  duration: reduced
+                      ? Duration.zero
+                      : const Duration(milliseconds: 220),
+                  child: Icon(
+                    key: ValueKey(step.state.name),
+                    switch (step.state) {
+                      JourneyState.completed => Icons.check_circle_rounded,
+                      JourneyState.locked => Icons.lock_outline_rounded,
+                      _ => Icons.play_circle_outline_rounded,
+                    },
+                    color: accent,
+                    size: 28,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 10),
-          if (cta != null)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onPrimary,
-                icon: Icon(ctaIcon, size: 20),
-                label: Text(cta),
-                style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-              ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: Icon(ctaIcon, size: 20),
-                label: const Text('Locked for now'),
+            const SizedBox(height: 6),
+            Text(
+              step.title,
+              style: text.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              message,
+              style: text.bodyMedium?.copyWith(
+                color: SahlhaColors.muted,
+                height: 1.5,
               ),
             ),
-        ],
+            if (step.state == JourneyState.current &&
+                step.skill.practiceQuestions > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    _MetaPill(
+                      Icons.assignment_outlined,
+                      '${step.skill.practiceQuestions} questions',
+                    ),
+                    _MetaPill(
+                      Icons.schedule_outlined,
+                      '~${((step.skill.description.split(RegExp(r'\s+')).length / 150) + step.skill.practiceQuestions * .6).ceil().clamp(1, 60)} min',
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (cta != null)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onPrimary,
+                  icon: Icon(ctaIcon, size: 20),
+                  label: Text(cta),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(48, 52),
+                  ),
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: null,
+                  icon: Icon(ctaIcon, size: 20),
+                  label: const Text('Locked for now'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -552,6 +839,7 @@ class _ConnectorPainter extends CustomPainter {
 
 /// A Quick Check on the path: a short, low-pressure revisit of recent
 /// steps once they have real attempts. Locked (null [onTap]) until then.
+/// Lavender milestone, visually unique from skill nodes.
 class CheckpointNode extends StatelessWidget {
   const CheckpointNode({
     super.key,
@@ -562,29 +850,61 @@ class CheckpointNode extends StatelessWidget {
   final VoidCallback? onTap;
   final String title, subtitle;
   @override
-  Widget build(BuildContext context) => AnimatedContainer(
-    duration: MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 300),
-    margin: const EdgeInsets.symmetric(vertical: 16),
-    decoration: BoxDecoration(
-      color: onTap == null ? const Color(0xFFF4F1FA) : const Color(0xFFECE4FF),
-      borderRadius: BorderRadius.circular(22),
-    ),
-    child: ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      leading: Icon(
-        onTap == null ? Icons.lock_outline_rounded : Icons.flag_outlined,
-        color: const Color(0xFF7858D8),
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 300),
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: enabled ? SahlhaColors.lavenderSoft : SahlhaColors.lavenderFaint,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: enabled
+              ? SahlhaColors.lavender.withValues(alpha: 0.45)
+              : SahlhaColors.borderSubtle,
+        ),
+        boxShadow: enabled ? SahlhaShadows.soft : null,
       ),
-      title: Text(title, style: Theme.of(context).textTheme.titleMedium),
-      subtitle: Text(subtitle),
-      trailing: onTap == null
-          ? null
-          : const Icon(Icons.arrow_forward_rounded, color: Color(0xFF7858D8)),
-      onTap: onTap,
-    ),
-  );
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: enabled ? SahlhaColors.lavender : Colors.white,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(
+            enabled ? Icons.quiz_outlined : Icons.lock_outline_rounded,
+            color: enabled ? Colors.white : SahlhaColors.lavenderDark,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: SahlhaColors.lavenderDark),
+        ),
+        trailing: enabled
+            ? const Icon(
+                Icons.arrow_forward_rounded,
+                color: SahlhaColors.lavenderDark,
+              )
+            : null,
+        onTap: onTap,
+      ),
+    );
+  }
 }
 
 class MasteryNode extends StatelessWidget {
@@ -603,43 +923,61 @@ class MasteryNode extends StatelessWidget {
   final int total;
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(22),
-    margin: const EdgeInsets.only(top: 20),
+    padding: const EdgeInsets.all(24),
+    margin: const EdgeInsets.only(top: 22),
     decoration: BoxDecoration(
-      color: ready ? SahlhaColors.sunSoft : SahlhaColors.surfaceRaised,
-      borderRadius: BorderRadius.circular(26),
-      border: Border.all(color: SahlhaColors.borderSubtle),
+      color: ready ? SahlhaColors.warmYellowSoft : Colors.white,
+      borderRadius: BorderRadius.circular(28),
+      border: Border.all(
+        color: ready ? SahlhaColors.warmYellow : SahlhaColors.borderSubtle,
+      ),
       boxShadow: SahlhaShadows.soft,
     ),
     child: Column(
       children: [
-        Icon(
-          ready ? Icons.workspace_premium_outlined : Icons.lock_outline_rounded,
-          color: _teal,
-          size: 34,
+        Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            color: ready ? SahlhaColors.warmYellow : SahlhaColors.tealSoft,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            ready
+                ? Icons.workspace_premium_outlined
+                : Icons.lock_outline_rounded,
+            color: ready
+                ? SahlhaColors.warmYellowDeep
+                : SahlhaColors.joyTealDark,
+            size: 30,
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         const JourneyEyebrow('MASTERY CHECK'),
         const SizedBox(height: 8),
         Text(
           'Bring it all together',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w800),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           ready
-              ? 'Revisit this unit in one practice session.'
+              ? 'Revisit this unit in one calm practice session.'
               : total > 0
               ? '$mastered of $total skills at mastery — keep going one step at a time.'
               : 'Ready when these skills are mastered and practice is prepared.',
           textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: SahlhaColors.muted),
         ),
         if (ready) ...[
-          const SizedBox(height: 14),
-          OutlinedButton(
+          const SizedBox(height: 16),
+          FilledButton.icon(
             onPressed: onTap,
-            child: const Text('Review this unit'),
+            icon: const Icon(Icons.auto_awesome_rounded, size: 20),
+            label: const Text('Review this unit'),
           ),
         ],
       ],

@@ -43,6 +43,17 @@ Rules:
 - YOU decide how many skills there are — one per distinct topic in the material. Do not aim for a fixed number; use as many as the topics require (up to the maximum below).
 - Each skill must be grounded in the provided context. Do not invent topics outside it.
 - Each skill must be independently learnable and testable.
+- Distinguish TEACHING CONTENT from document apparatus before identifying topics.
+- Ignore contents/index entries, title pages, publisher/copyright/license/funding notices,
+  acknowledgments, author/contributor biographies, running headers and bibliographies.
+- Assumed knowledge lists are prerequisites, not new taught skills. Generic labels such
+  as Content, Motivation, About the Author, Example and Summary are not skill names.
+- A topic must be actually explained, demonstrated or practiced in the evidence, not
+  merely named. Return an empty skills list for non-instructional material.
+- An author studied as the SUBJECT of a history/literature lesson is valid; the writer
+  of this document listed in its credits is not. Likewise copyright may be a valid law
+  lesson topic, but a publication copyright notice is never teaching evidence.
+- Use concise concept names and measurable objectives; never copy a prose fragment as a name.
 - Include learning_objective, prerequisites, misconceptions, difficulty, source_section_ids, evidence_chunk_ids.
 - evidence_chunk_ids MUST cite the supplied chunk identifiers. Never invent evidence.
 - Reject isolated labels like True, False, Looping, Example, Output. Use teachable topics supported by the source.

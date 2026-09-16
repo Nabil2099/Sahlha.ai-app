@@ -57,6 +57,27 @@ class TeacherRepository {
     }
   }
 
+  Future<List<BankSummary>> listBanks({
+    String? status,
+    String? classroomId,
+    String? materialId,
+  }) async {
+    try {
+      final query = <String, dynamic>{};
+      if (status != null) query['status'] = status;
+      if (classroomId != null) query['classroom_id'] = classroomId;
+      if (materialId != null) query['material_id'] = materialId;
+      final res = await _dio.get<dynamic>(
+        '/teacher/banks',
+        queryParameters: query,
+      );
+      final items = (res.data as List? ?? []).cast<Map<String, dynamic>>();
+      return items.map(BankSummary.fromJson).toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
   Future<void> approveBank(String bankId) async {
     try {
       await _dio.post<dynamic>('/teacher/banks/$bankId/approve');
@@ -146,3 +167,35 @@ Future<Map<String, dynamic>> classroomMastery(Ref ref, String classroomId) =>
 @riverpod
 Future<BankDetail> bankDetail(Ref ref, String bankId) =>
     ref.watch(teacherRepositoryProvider).bankDetail(bankId);
+
+/// All / filtered banks for the signed-in teacher (Reviews surface).
+/// Keepalive=false on purpose: Reviews must always reflect the backend.
+@riverpod
+Future<List<BankSummary>> teacherBanks(
+  Ref ref, {
+  String? status,
+  String? classroomId,
+  String? materialId,
+}) => ref
+    .watch(teacherRepositoryProvider)
+    .listBanks(
+      status: status,
+      classroomId: classroomId,
+      materialId: materialId,
+    );
+
+/// Pending-review banks only (home badge + Reviews tab).
+@riverpod
+Future<List<BankSummary>> pendingBanks(Ref ref) =>
+    ref.watch(teacherRepositoryProvider).listBanks(status: 'pending_review');
+
+/// One student's full progress (teacher view). Public so Curriculum Studio
+/// Students tab and Student Detail share one source of truth.
+@riverpod
+Future<Map<String, dynamic>> teacherStudentProgress(
+  Ref ref,
+  String classroomId,
+  String studentId,
+) => ref
+    .watch(teacherRepositoryProvider)
+    .studentProgress(classroomId, studentId);

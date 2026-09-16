@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 
+from sahlha.app.agent.pedagogy import DISCOVERY_VERSION, instructional_views, topic_name, has_instruction
 from sqlalchemy import select
 from sahlha.app.database import models as m
 from sahlha.app.database.repositories import repositories as repo
@@ -20,7 +21,8 @@ def ordered_lesson(db, course_id, lesson_id):
 
 
 def build_content_map(db, course_id, lesson_id):
-    chunks = ordered_lesson(db, course_id, lesson_id)
+    source_chunks = ordered_lesson(db, course_id, lesson_id)
+    chunks, decisions = instructional_views(source_chunks)
     sections = []
     for c in chunks:
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n\n', c['text']) if s.strip()]
@@ -48,13 +50,15 @@ def build_content_map(db, course_id, lesson_id):
     domain = max(scores, key=scores.get) if any(scores.values()) else 'general'
     payload = {'title': next((c['section'] for c in chunks if c['section']), lesson_id.replace('_', ' ')),
                'sections': sections, 'domain': domain, 'chunk_count': len(chunks),
-               'source_fingerprint': hashlib.sha256(json.dumps(chunks, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
+               'discovery_version': DISCOVERY_VERSION, 'source_chunk_count': len(source_chunks),
+               'content_roles': decisions,
+               'source_fingerprint': hashlib.sha256(json.dumps(source_chunks, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
     row = db.execute(select(m.LessonContentMap).where(m.LessonContentMap.course_id == course_id,
                         m.LessonContentMap.lesson_id == lesson_id)).scalar_one_or_none()
     if row is None:
         row = m.LessonContentMap(course_id=course_id, lesson_id=lesson_id)
         db.add(row)
-    elif row.content.get('source_fingerprint') == payload['source_fingerprint']:
+    elif row.content.get('discovery_version') == DISCOVERY_VERSION and row.content.get('source_fingerprint') == payload['source_fingerprint']:
         return row.content, chunks
     for field in ('definitions', 'examples', 'code_examples', 'formulas', 'tables', 'important_facts', 'concepts'):
         payload[field] = [item for section in sections for item in section[field]]
@@ -65,6 +69,7 @@ def build_content_map(db, course_id, lesson_id):
 
 def save_mapped_topics(db, course_id, lesson_id, content_map, candidates, warnings):
     payload = dict(content_map)
+    payload['skills_version'] = DISCOVERY_VERSION
     payload['concepts'] = list(dict.fromkeys(s['name'] for s in candidates))
     payload['warnings'] = warnings
     payload['sections'] = [dict(section, concepts=list(dict.fromkeys(s['name'] for s in candidates
@@ -98,23 +103,44 @@ _TOPICS = [
     ('Loop Fundamentals', r'\b(?:loop|loops|looping|iteration)\b'),
 ]
 
+# Concept recognizers for the offline path. They require instructional evidence,
+# not just occurrences in an index or prerequisite list. The LLM path remains
+# domain-independent and applies the same evidence/role validation.
+_MATH_TOPICS = [
+    ('Multiplication as Repeated Addition', r'\brepeated addition\b'),
+    ('Multiplication Applications', r'\b(?:applications|cost|boxes|rolls)\b'),
+    ('Array Models of Multiplication', r'\bar\s*rays?\b'),
+    ('Commutative Property of Multiplication', r'\bcommutativ\w*\b'),
+    ('Multiplication by Skip Counting', r'\bskip[\s\-‑]*counting\b'),
+    ('Area Models of Multiplication', r'\barea model\b|\bmultiplication by area\b'),
+    ('Multiplication Facts and Tables', r'\bmultiplication (?:facts|tables?)\b|\btimes tables?\b'),
+    ('Distributive Property of Multiplication', r'\bdistributiv\w*\b'),
+    ('Associative Property of Multiplication', r'\bassociativ\w*\b'),
+    ('Multi-digit Multiplication', r'\b(?:multiple|multi)[\s\-‑]*digit\b|\blong multiplication\b'),
+]
+
 
 def fallback_topics(chunks):
     candidates = []
+    chunks, _ = instructional_views(chunks)
     for c in chunks:
         text = c['text']
         programming = re.search(r'\b(?:python|programming|code|loops?|elif|indentation|boolean|if statement)\b', text, re.I)
         topics = [(name, pattern) for name, pattern in _TOPICS if programming and re.search(pattern, text, re.I)]
+        if not programming and re.search(r'\bmultiplication\b|\bmultiply\w*\b', text, re.I):
+            topics.extend((name, pattern) for name, pattern in _MATH_TOPICS if re.search(pattern, text, re.I))
         if any(n in {'While Loop Fundamentals', 'For Loops'} for n, _ in topics):
             topics = [(n, p) for n, p in topics if n != 'Loop Fundamentals']
+        if not topics and topic_name(c.get('section', '')) and has_instruction(text, c.get('section', '')):
+            topics = [(c['section'], re.escape(c['section']))]
         if not topics:
             sentences = re.split(r'(?<=[.!?])\s+|\n', text)
             for sentence in sentences:
                 # Use the subject of a definition, not the most frequent isolated token.
                 match = re.match(r'^\s*([\w][\w ,()-]{2,70}?)\s+(?:is|are|means|refers to|describes|uses|helps|allows)\b', sentence, re.I)
-                if match:
+                if match and topic_name(match.group(1)):
                     topics.append((match.group(1).strip().title(), re.escape(match.group(1))))
-            if not topics and c.get('section') and len(text.split()) >= 10:
+            if not topics and topic_name(c.get('section', '')) and has_instruction(text, c.get('section', '')):
                 topics = [(c['section'], re.escape(c['section']))]
         for name, pattern in topics:
             facts = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n', text) if re.search(pattern, s, re.I)]
@@ -128,6 +154,7 @@ def fallback_topics(chunks):
 
 
 def validate_skills(candidates, chunks, max_skills):
+    chunks, _ = instructional_views(chunks)
     evidence = {c['chunk_id']: c for c in chunks}
     accepted, warnings = [], []
     garbage = {'false', 'true', 'looping', 'loops', 'example', 'output', 'lesson basics', 'introduction'}
@@ -135,12 +162,12 @@ def validate_skills(candidates, chunks, max_skills):
         skill = dict(raw)
         name = skill.get('name', '').strip()
         ids = list(dict.fromkeys(skill.get('evidence_chunk_ids') or []))
-        if not name or name.lower() in garbage or not ids or any(i not in evidence for i in ids):
+        if not topic_name(name) or name.lower() in garbage or not ids or any(i not in evidence for i in ids):
             warnings.append(f'Rejected vague or unsupported skill: {name}')
             continue
         source = ' '.join(evidence[i]['text'] for i in ids).lower()
         terms = set(re.findall(r'\w{3,}', name.lower())) - {'fundamentals', 'basics', 'introduction', 'conditions', 'control', 'and'}
-        supported_alias = any(name == topic and re.search(pattern, source, re.I) for topic, pattern in _TOPICS)
+        supported_alias = any(name == topic and re.search(pattern, source, re.I) for topic, pattern in _TOPICS + _MATH_TOPICS)
         if terms and not supported_alias and sum(t.rstrip('s') in source for t in terms) / len(terms) < .75:
             warnings.append(f'Rejected unsupported topic: {name}')
             continue
@@ -175,7 +202,7 @@ def retire_superseded_skills(db, course_id, lesson_id, active_ids):
 
 def skill_evidence(db, *, course_id, lesson_id, skill_id, query=None, top_k=8):
     skill = repo.get_skill(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
-    chunks = ordered_lesson(db, course_id, lesson_id)
+    chunks, _ = instructional_views(ordered_lesson(db, course_id, lesson_id))
     if skill and skill.evidence_chunk_ids:
         ids = set(skill.evidence_chunk_ids)
         chunks = [c for c in chunks if c['chunk_id'] in ids]
@@ -186,7 +213,8 @@ def skill_evidence(db, *, course_id, lesson_id, skill_id, query=None, top_k=8):
         from sahlha.app.rag.vectorstore import search
         ranked = search(db, query, top_k=top_k, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
         allowed = {c['chunk_id'] for c in chunks}
-        ranked = [c for c in ranked if c['chunk_id'] in allowed]
+        clean = {c['chunk_id']: c for c in chunks}
+        ranked = [dict(c, text=clean[c['chunk_id']]['text']) for c in ranked if c['chunk_id'] in allowed]
         if ranked:
             return ranked
         # Explicit evidence read when a query has no term match; never widen scope.

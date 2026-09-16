@@ -45,7 +45,10 @@ class SahlhaAgent:
         st.course_id, st.lesson_id = course_id, lesson_id
         st.current_phase = Phase.SKILL_EXTRACTION
         st.log("phase", st.current_phase)
-        if not force:
+        from sahlha.app.agent.tools import content_tools
+        from sahlha.app.agent.pedagogy import DISCOVERY_VERSION
+        content_map, chunks = content_tools.build_content_map(self.db, course_id, lesson_id)
+        if not force and content_map.get('skills_version') == DISCOVERY_VERSION:
             existing = skill_tools.list_skills(self.db, course_id=course_id, lesson_id=lesson_id)
             if existing and all(s.evidence_chunk_ids and s.learning_objective for s in existing):
                 skills = [self._skill_to_dict(s) for s in existing]
@@ -53,10 +56,9 @@ class SahlhaAgent:
                 st.log("skills:existing", {"count": len(skills)})
                 return {"skills": skills, "backend": "existing", "trace": st.trace}
 
-        from sahlha.app.agent.tools import content_tools
-        content_map, chunks = content_tools.build_content_map(self.db, course_id, lesson_id)
         if not chunks:
-            raise ValueError("No source material is available for skill discovery.")
+            content_tools.retire_superseded_skills(self.db, course_id, lesson_id, set())
+            raise ValueError("No instructional lesson content is available for skill discovery. Titles, indexes and publication details cannot support skills.")
         st.log("tool:full_lesson_map", {"num_chunks": len(chunks), "sections": len(content_map['sections'])})
         raw, backends = [], []
         # Every ordered chunk is mapped. Each request is bounded; there is no
@@ -71,6 +73,11 @@ class SahlhaAgent:
             except Exception as exc:
                 mapped = content_tools.fallback_topics([chunk])
                 backend = f"fallback({type(exc).__name__})"
+            # Validate each section before combining. A malformed model response
+            # must not suppress useful fallback topics in the rest of the lesson.
+            mapped, _ = content_tools.validate_skills(mapped, [chunk], max(1, max_skills))
+            if not mapped:
+                mapped = content_tools.fallback_topics([chunk])
             raw.extend(mapped)
             backends.append(backend)
         raw, warnings = content_tools.validate_skills(raw, chunks, max(1, max_skills))

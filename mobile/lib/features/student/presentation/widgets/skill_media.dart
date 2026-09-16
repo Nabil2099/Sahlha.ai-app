@@ -279,34 +279,70 @@ class _ReadAloudButtonState extends ConsumerState<ReadAloudButton>
         if (audio.activeUrl != _url) state = ReadAloudState.idle;
         final busy = state == ReadAloudState.loading;
         final ready = !busy && audio.activeUrl == _url;
+        final text = Theme.of(context).textTheme;
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: SahlhaColors.tealSoft,
-            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFE6FAF7), Color(0xFFD2F1EC)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: SahlhaColors.joyTeal.withValues(alpha: 0.25),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.headphones_rounded,
-                    color: SahlhaColors.tealDark,
-                  ),
-                  const SizedBox(width: 8),
-                  AudioCompanion(url: _url, size: 32),
-                  const SizedBox(width: 8),
+                  AudioCompanion(url: _url, size: 52),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      'Listen to this explanation',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.headphones_rounded,
+                              size: 16,
+                              color: SahlhaColors.joyTealDark,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Listen to this explanation',
+                                style: text.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          switch (state) {
+                            ReadAloudState.loading =>
+                              'Getting the voice ready…',
+                            ReadAloudState.playing => 'Sahlha is reading…',
+                            ReadAloudState.paused => 'Paused — resume anytime.',
+                            ReadAloudState.idle =>
+                              'Hear it in a friendly voice.',
+                          },
+                          style: text.bodySmall?.copyWith(
+                            color: SahlhaColors.muted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               StreamBuilder<Duration?>(
                 stream: audio.durationStream,
                 initialData: audio.duration,
@@ -321,94 +357,176 @@ class _ReadAloudButtonState extends ConsumerState<ReadAloudButton>
                         ? (positionSnapshot.data ?? Duration.zero)
                         : Duration.zero;
                     final max = total.inMilliseconds.toDouble();
+                    final double value = position.inMilliseconds
+                        .toDouble()
+                        .clamp(0.0, max > 0 ? max : 1.0)
+                        .toDouble();
                     return Column(
                       children: [
-                        Slider(
-                          semanticFormatterCallback: (value) =>
-                              '${(value / 1000).round()} seconds',
-                          min: 0,
-                          max: max > 0 ? max : 1,
-                          value: position.inMilliseconds.toDouble().clamp(
-                            0,
-                            max > 0 ? max : 1,
-                          ),
-                          onChanged: ready && max > 0
-                              ? (value) => audio.seek(
-                                  Duration(milliseconds: value.round()),
-                                )
-                              : null,
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: busy ? null : () => _toggle(state),
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                decoration: const BoxDecoration(
+                                  color: SahlhaColors.joyTeal,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: busy
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(14),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        state == ReadAloudState.playing
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  // Tiny waveform-ish bars (decorative,
+                                  // progress-driven, reduced-motion safe).
+                                  SizedBox(
+                                    height: 22,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        for (var i = 0; i < 24; i++)
+                                          Expanded(
+                                            child: Container(
+                                              margin:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 1.5,
+                                                  ),
+                                              height:
+                                                  6 +
+                                                  (max > 0
+                                                      ? ((i / 24) <=
+                                                                (value /
+                                                                    (max > 0
+                                                                        ? max
+                                                                        : 1))
+                                                            ? 14
+                                                            : 8)
+                                                      : 8),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    (max > 0 &&
+                                                        (i / 24) <=
+                                                            (value / max))
+                                                    ? SahlhaColors.joyTeal
+                                                    : SahlhaColors.joyTeal
+                                                          .withValues(
+                                                            alpha: 0.3,
+                                                          ),
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 6,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 8,
+                                      ),
+                                      overlayShape:
+                                          const RoundSliderOverlayShape(
+                                            overlayRadius: 14,
+                                          ),
+                                      activeTrackColor: SahlhaColors.joyTeal,
+                                      inactiveTrackColor: Colors.white
+                                          .withValues(alpha: 0.8),
+                                      thumbColor: SahlhaColors.joyTealDark,
+                                    ),
+                                    child: Slider(
+                                      semanticFormatterCallback: (v) =>
+                                          '${(v / 1000).round()} seconds',
+                                      min: 0.0,
+                                      max: max > 0 ? max : 1.0,
+                                      value: value,
+                                      onChanged: ready && max > 0
+                                          ? (v) => audio.seek(
+                                              Duration(milliseconds: v.round()),
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [Text(_time(position)), Text(_time(total))],
+                          children: [
+                            Text(_time(position), style: text.bodySmall),
+                            Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () async {
+                                    final next = audio.speed >= 2.0
+                                        ? 0.75
+                                        : audio.speed >= 1.5
+                                        ? 2.0
+                                        : audio.speed >= 1.25
+                                        ? 1.5
+                                        : audio.speed >= 1.0
+                                        ? 1.25
+                                        : 1.0;
+                                    await audio.setSpeed(next);
+                                    if (mounted) setState(() {});
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                    child: Text(
+                                      '${audio.speed}x',
+                                      style: text.labelSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(_time(total), style: text.bodySmall),
+                              ],
+                            ),
+                          ],
                         ),
                       ],
                     );
                   },
                 ),
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(0, 48),
-                    ),
-                    onPressed: busy ? null : () => _toggle(state),
-                    icon: Icon(
-                      state == ReadAloudState.playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                    ),
-                    label: Text(
-                      switch (state) {
-                        ReadAloudState.loading => 'Preparing audio...',
-                        ReadAloudState.playing => 'Pause',
-                        ReadAloudState.paused => 'Resume',
-                        ReadAloudState.idle => 'Play lesson',
-                      },
-                      style: Theme.of(context).textTheme.labelLarge
-                          ?.copyWith(color: Colors.white),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: busy ? 'Cancel audio' : 'Stop audio',
-                    onPressed: audio.activeUrl == _url
-                        ? () => audio.stop()
-                        : null,
-                    icon: const Icon(Icons.stop_rounded),
-                  ),
-                  IconButton(
-                    tooltip: 'Replay from start',
-                    onPressed: ready
-                        ? () async {
-                            await audio.seek(Duration.zero);
-                            await audio.resume();
-                          }
-                        : null,
-                    icon: const Icon(Icons.replay_rounded),
-                  ),
-                  PopupMenuButton<double>(
-                    tooltip: 'Playback speed',
-                    initialValue: audio.speed,
-                    onSelected: (value) async {
-                      await audio.setSpeed(value);
-                      if (mounted) setState(() {});
-                    },
-                    itemBuilder: (_) => [
-                      for (final speed in [0.75, 1.0, 1.25, 1.5, 2.0])
-                        PopupMenuItem(value: speed, child: Text('${speed}x')),
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text('${audio.speed}x'),
-                    ),
-                  ),
-                ],
-              ),
+              if (!ready && !busy) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Tap play — audio stays here, no extra downloads.',
+                  style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
+                ),
+              ],
             ],
           ),
         );

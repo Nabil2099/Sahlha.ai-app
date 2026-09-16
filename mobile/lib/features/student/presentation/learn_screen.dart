@@ -8,6 +8,7 @@ import '../../classrooms/data/classroom_repository.dart';
 import '../data/student_repository.dart';
 import 'journey_presentation.dart';
 import 'widgets/learning_journey.dart';
+import 'widgets/playful_background.dart';
 
 class LearnScreen extends ConsumerWidget {
   const LearnScreen({super.key, this.classroomId, this.supplementary = false});
@@ -20,70 +21,73 @@ class LearnScreen extends ConsumerWidget {
       appBar: SahlhaAppBar(
         title: supplementary ? 'Extra learning' : 'Your learning path',
       ),
-      body: StudentCanvas(
-        child: supplementary
-            ? const JourneyContent(supplementary: true)
-            : rooms.when(
-                loading: () => const JourneyLoading(),
-                error: (_, _) => ErrorState(
-                  message: "We couldn't load your learning path.",
-                  onRetry: () => ref.invalidate(classroomListProvider),
-                ),
-                data: (list) {
-                  if (list.isEmpty) {
-                    return EmptyState(
-                      title: 'Your journey starts here',
-                      message: 'Join your classroom to discover your first learning step.',
-                      action: SahlhaPrimaryButton(
-                        label: 'Join a classroom',
-                        onPressed: () => context.push('/student/join'),
-                      ),
-                    );
-                  }
-                  final selected =
-                      list.where((r) => r.id == classroomId).firstOrNull ??
-                      list.first;
-                  return Column(
-                    children: [
-                      if (list.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 8, 22, 0),
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey(selected.id),
-                            initialValue: selected.id,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Your classroom',
-                            ),
-                            items: list
-                                .map(
-                                  (r) => DropdownMenuItem(
-                                    value: r.id,
-                                    child: Text(
-                                      studentTitle(r.name),
-                                      overflow: TextOverflow.ellipsis,
+      body: PlayfulBackground(
+        variant: PlayfulVariant.path,
+        child: StudentCanvas(
+          child: supplementary
+              ? const JourneyContent(supplementary: true)
+              : rooms.when(
+                  loading: () => const JourneyLoading(),
+                  error: (_, _) => ErrorState(
+                    message: "We couldn't load your learning path.",
+                    onRetry: () => ref.invalidate(classroomListProvider),
+                  ),
+                  data: (list) {
+                    if (list.isEmpty) {
+                      return EmptyState(
+                        title: 'Your journey starts here',
+                        message: 'Join your classroom to discover your first learning step.',
+                        action: SahlhaPrimaryButton(
+                          label: 'Join a classroom',
+                          onPressed: () => context.push('/student/join'),
+                        ),
+                      );
+                    }
+                    final selected =
+                        list.where((r) => r.id == classroomId).firstOrNull ??
+                        list.first;
+                    return Column(
+                      children: [
+                        if (list.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 8, 22, 0),
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(selected.id),
+                              initialValue: selected.id,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Your classroom',
+                              ),
+                              items: list
+                                  .map(
+                                    (r) => DropdownMenuItem(
+                                      value: r.id,
+                                      child: Text(
+                                        studentTitle(r.name),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (id) {
-                              if (id != null) {
-                                context.go(learningLocation(classroomId: id));
-                              }
-                            },
+                                  )
+                                  .toList(),
+                              onChanged: (id) {
+                                if (id != null) {
+                                  context.go(learningLocation(classroomId: id));
+                                }
+                              },
+                            ),
+                          ),
+                        Expanded(
+                          child: JourneyContent(
+                            key: ValueKey(selected.id),
+                            classroomId: selected.id,
+                            subject: selected.subject,
                           ),
                         ),
-                      Expanded(
-                        child: JourneyContent(
-                          key: ValueKey(selected.id),
-                          classroomId: selected.id,
-                          subject: selected.subject,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+                      ],
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }

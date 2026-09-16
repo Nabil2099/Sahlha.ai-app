@@ -49,6 +49,42 @@ abstract final class SahlhaColors {
   static const Color sunSoft = Color(0xFFFEF3C7);
   static const Color coral = Color(0xFFF97066);
 
+  // ---- Joyful Student palette (reference image target) ----
+  // Keep the calm base above for Teacher/Parent; these add expressive
+  // accents for the Student world only. Low-saturation surfaces guide
+  // attention without overstimulation.
+  /// Primary teal from the reference (~#0F9F95).
+  static const Color joyTeal = Color(0xFF0F9F95);
+  static const Color joyTealDark = Color(0xFF0B6E64);
+
+  /// Secondary aqua/mint (~#49D5CC).
+  static const Color aqua = Color(0xFF49D5CC);
+  static const Color aquaSoft = Color(0xFFDFFBF8);
+
+  /// Warm yellow (~#FFC94A) — current skill, gentle emphasis.
+  static const Color warmYellow = Color(0xFFFFC94A);
+  static const Color warmYellowSoft = Color(0xFFFFF3D1);
+  static const Color warmYellowDeep = Color(0xFF956300);
+
+  /// Lavender (~#8B6FF3) — Quick Check milestones.
+  static const Color lavender = Color(0xFF8B6FF3);
+  static const Color lavenderDark = Color(0xFF6A4FD0);
+  static const Color lavenderSoft = Color(0xFFEEE8FF);
+  static const Color lavenderFaint = Color(0xFFF4F1FA);
+
+  /// Sky blue (~#73BFFF) — practice / examples.
+  static const Color sky = Color(0xFF73BFFF);
+  static const Color skyDark = Color(0xFF2E7FC4);
+  static const Color skySoft = Color(0xFFE3F2FF);
+
+  /// Soft coral (~#FF8C72) — needs practice, supportive errors.
+  static const Color softCoral = Color(0xFFFF8C72);
+  static const Color softCoralDark = Color(0xFFB63752);
+  static const Color softCoralSoft = Color(0xFFFFE8E4);
+
+  /// Warm cream canvas, one step warmer than [cream].
+  static const Color creamWarm = Color(0xFFFFFBF2);
+
   static const Color success = Color(0xFF16A34A);
   static const Color successSoft = Color(0xFFDCFCE7);
   static const Color warning = Color(0xFFF59E0B);

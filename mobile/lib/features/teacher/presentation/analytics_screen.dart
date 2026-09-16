@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,9 +7,13 @@ import '../../../core/theme/sahlha_spacing.dart';
 import '../../../core/widgets/sahlha_widgets.dart';
 import '../../classrooms/data/classroom_repository.dart';
 import '../data/teacher_repository.dart';
+import 'widgets/teacher_widgets.dart';
 
-/// Class analytics focused on skill-level decisions:
-/// which skill is difficult, who needs support. One chart, with purpose.
+/// Reviews — the Teacher review queue (route stays /teacher/analytics for
+/// backwards compatibility; tab label is "Reviews").
+///
+/// Real pending banks only. No fake analytics. Tapping a bank opens the
+/// full BankReviewScreen. Classroom insights live in ClassroomDetail.
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
@@ -19,214 +22,168 @@ class AnalyticsScreen extends ConsumerStatefulWidget {
 }
 
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
-  String? _classroomId;
+  String? _classroomId; // null = all classrooms
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final rooms = ref.watch(classroomListProvider);
+    final banks = ref.watch(
+      teacherBanksProvider(
+        status: 'pending_review',
+        classroomId: _classroomId,
+      ),
+    );
     return Scaffold(
-      appBar: const SahlhaAppBar(title: 'Analytics'),
-      body: rooms.when(
-        loading: () => const LoadingState(),
-        error: (e, _) => ErrorState(
-          message: e.toString(),
-          onRetry: () => ref.invalidate(classroomListProvider),
-        ),
-        data: (list) {
-          if (list.isEmpty) {
-            return EmptyState(
-              title: 'No classrooms yet',
-              message: 'Create a classroom to see analytics.',
-              action: SahlhaPrimaryButton(
-                label: 'Create classroom',
-                onPressed: () => context.push('/teacher/classrooms/new'),
-              ),
-            );
-          }
-          final selected =
-              list.where((r) => r.id == _classroomId).firstOrNull ?? list.first;
-          return ListView(
-            padding: const EdgeInsets.all(SahlhaSpacing.page),
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: selected.id,
-                decoration: const InputDecoration(labelText: 'Classroom'),
-                items: list
-                    .map(
-                      (r) => DropdownMenuItem(value: r.id, child: Text(r.name)),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => _classroomId = v),
-              ),
-              const SizedBox(height: SahlhaSpacing.lg),
-              _AnalyticsBody(classroomId: selected.id),
-              const SizedBox(height: SahlhaSpacing.sm),
-              Text(
-                'Charts support a decision: which skill to teach again, and who needs support.',
-                style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
-              ),
-            ],
-          );
+      appBar: AppBar(title: Text('Reviews', style: text.titleLarge)),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(teacherBanksProvider);
+          ref.invalidate(pendingBanksProvider);
         },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(SahlhaSpacing.page),
+          children: [
+            Text(
+              'AI-drafted questions waiting for your approval.',
+              style: text.bodyMedium?.copyWith(color: SahlhaColors.muted),
+            ),
+            const SizedBox(height: SahlhaSpacing.md),
+            rooms.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+              data: (list) {
+                if (list.isEmpty) return const SizedBox.shrink();
+                return DropdownButtonFormField<String?>(
+                  initialValue: _classroomId,
+                  decoration: const InputDecoration(
+                    labelText: 'Classroom (optional)',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All classrooms'),
+                    ),
+                    for (final r in list)
+                      DropdownMenuItem<String?>(
+                        value: r.id,
+                        child: Text(r.name),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _classroomId = v),
+                );
+              },
+            ),
+            const SizedBox(height: SahlhaSpacing.md),
+            banks.when(
+              loading: () =>
+                  const LoadingState(message: 'Loading review queue…'),
+              error: (e, _) => ErrorState(
+                message: e.toString(),
+                onRetry: () => ref.invalidate(teacherBanksProvider),
+              ),
+              data: (list) {
+                if (list.isEmpty) {
+                  return const SahlhaCard(
+                    child: Row(
+                      children: [
+                        SahlhaProcessingAvatar(size: 52),
+                        SizedBox(width: SahlhaSpacing.md),
+                        Expanded(
+                          child: Text(
+                            'All caught up! No questions waiting for review.',
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                // Group by skill for a calm, scannable queue.
+                final bySkill = <String, List<dynamic>>{};
+                for (final b in list) {
+                  bySkill.putIfAbsent(b.skillId, () => []).add(b);
+                }
+                return Column(
+                  children: [
+                    for (final entry in bySkill.entries)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: SahlhaSpacing.sm,
+                        ),
+                        child: _ReviewGroup(
+                          skillId: entry.key,
+                          banks: entry.value,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: SahlhaSpacing.xl),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _AnalyticsBody extends ConsumerWidget {
-  const _AnalyticsBody({required this.classroomId});
+class _ReviewGroup extends StatelessWidget {
+  const _ReviewGroup({required this.skillId, required this.banks});
 
-  final String classroomId;
+  final String skillId;
+  final List<dynamic> banks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final mastery = ref.watch(classroomMasteryProvider(classroomId));
-    return mastery.when(
-      loading: () => const LoadingState(),
-      error: (e, _) => ErrorState(
-        message: e.toString(),
-        onRetry: () => ref.invalidate(classroomMasteryProvider(classroomId)),
-      ),
-      data: (data) {
-        final skills = (data['skill_performance'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-        final needing = (data['needing_support'] as List? ?? []);
-        if (skills.isEmpty) {
-          return const EmptyState(
-            title: 'No data yet',
-            message: 'Skill analytics appear once students start practicing.',
-          );
-        }
-        final chartSkills = skills.take(6).toList();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Skill mastery', style: text.titleLarge),
-            const SizedBox(height: SahlhaSpacing.sm),
-            SahlhaCard(
-              child: SizedBox(
-                height: 220,
-                child: BarChart(
-                  BarChartData(
-                    gridData: const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 36,
-                          getTitlesWidget: (v, _) => Text(
-                            '${v.toInt()}%',
-                            style: text.labelSmall?.copyWith(
-                              color: SahlhaColors.muted,
-                            ),
-                          ),
-                        ),
-                      ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 60,
-                          getTitlesWidget: (v, _) {
-                            final i = v.toInt();
-                            if (i < 0 || i >= chartSkills.length) {
-                              return const SizedBox.shrink();
-                            }
-                            final name =
-                                ((chartSkills[i]['name'] as String?)
-                                        ?.isNotEmpty ==
-                                    true)
-                                ? chartSkills[i]['name'] as String
-                                : (chartSkills[i]['skill_id']?.toString() ??
-                                      '');
-                            final short = name.length > 10
-                                ? '${name.substring(0, 10)}…'
-                                : name;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                short,
-                                style: text.labelSmall?.copyWith(
-                                  color: SahlhaColors.muted,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    minY: 0,
-                    maxY: 100,
-                    barGroups: List.generate(chartSkills.length, (i) {
-                      final rate =
-                          (chartSkills[i]['mastery_rate'] as num?)
-                              ?.toDouble() ??
-                          0;
-                      return BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: rate * 100,
-                            width: 22,
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(8),
-                            ),
-                            color: rate >= 0.8
-                                ? SahlhaColors.success
-                                : rate >= 0.6
-                                ? SahlhaColors.teal
-                                : SahlhaColors.sun,
-                          ),
-                        ],
-                      );
-                    }),
+    final totalQuestions = banks.fold<int>(
+      0,
+      (sum, b) => sum + ((b as dynamic).numQuestions as int? ?? 0),
+    );
+    return SahlhaCard(
+      onTap: banks.isNotEmpty && (banks.first as dynamic).id != null
+          ? () => context.push('/teacher/banks/${(banks.first as dynamic).id}')
+          : null,
+      padding: const EdgeInsets.all(SahlhaSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: SahlhaColors.warmYellowSoft,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.rate_review_outlined,
+              color: SahlhaColors.warmYellowDeep,
+            ),
+          ),
+          const SizedBox(width: SahlhaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  skillId,
+                  style: text.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: SahlhaSpacing.lg),
-            Text(
-              'Students needing support (${needing.length})',
-              style: text.titleLarge,
-            ),
-            const SizedBox(height: SahlhaSpacing.sm),
-            if (needing.isEmpty)
-              const SahlhaCard(child: Text('Everyone is on track right now.'))
-            else
-              ...needing.map((n) {
-                final item = n as Map<String, dynamic>;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
-                  child: SahlhaCard(
-                    onTap: () => context.push(
-                      '/teacher/students/$classroomId/${item['student_id']}',
-                    ),
-                    padding: const EdgeInsets.all(SahlhaSpacing.md),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item['name']?.toString() ?? '',
-                            style: text.titleMedium,
-                          ),
-                        ),
-                        const SkillStatusBadge(state: 'needs_practice'),
-                      ],
-                    ),
+                Text(
+                  '$totalQuestions question${totalQuestions == 1 ? '' : 's'} · ${banks.length} bank${banks.length == 1 ? '' : 's'}',
+                  style: text.bodySmall?.copyWith(
+                    color: SahlhaColors.muted,
                   ),
-                );
-              }),
-          ],
-        );
-      },
+                ),
+              ],
+            ),
+          ),
+          const EvidenceBadge(label: 'Pending', tone: 'pending'),
+          const Icon(Icons.chevron_right, color: SahlhaColors.muted),
+        ],
+      ),
     );
   }
 }

@@ -91,6 +91,19 @@ approved banks and mastery histories are preserved, not automatically regraded.
 Regression corpus
 -----------------
 
+Topic discovery now classifies document roles before proposing skills. It excludes
+contents/index entries, publication notices, author credits/biographies, prerequisites,
+running headers and labels without explanatory support. Mixed instructional passages
+retain teaching text while notices are removed from generation views; raw documents
+remain unchanged. This applies to LLM and offline generation and is checked again
+during evidence validation. Legitimate lessons about authors, copyright, physics work
+or programming indexes remain eligible when they are teaching content.
+
+Content maps record inclusion decisions and a discovery-policy version. Previously
+cached skills are refreshed on the next extraction even when they already have evidence
+IDs; obsolete rows are archived rather than deleted. Quality coverage uses instructional
+chunks, so omitting credits or indexes does not count as missing lesson coverage.
+
 `tests/test_content_intelligence.py` covers programming, math, science, history,
 geography, DOCX, PPTX, mixed native/scanned PDF, malformed OCR, code/tables/formulas,
 full coverage beyond eight chunks, meaningful/merged topics, evidence isolation,

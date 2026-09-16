@@ -139,6 +139,37 @@ class MaterialRepository {
       throw ApiException.fromDio(e);
     }
   }
+
+  Future<GeneratedSkill> createSkill(
+    String materialId, {
+    required String skillId,
+    required String name,
+    String? description,
+    List<String>? keyConcepts,
+  }) async {
+    try {
+      final res = await _dio.post<dynamic>(
+        '/materials/$materialId/skills',
+        data: {
+          'skill_id': skillId,
+          'name': name,
+          if (description != null) 'description': description,
+          if (keyConcepts != null) 'key_concepts': keyConcepts,
+        },
+      );
+      return GeneratedSkill.fromJson(_asMap(res.data));
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  Future<void> deleteSkill(String materialId, String skillId) async {
+    try {
+      await _dio.delete<dynamic>('/materials/$materialId/skills/$skillId');
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
 }
 
 Map<String, dynamic> _asMap(dynamic data) =>
