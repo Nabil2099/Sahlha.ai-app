@@ -1,0 +1,17 @@
+enum ExampleKind {
+  multiplicationAreaModel,
+  additionNumberLine,
+  subtractionNumberLine,
+  fractionBars,
+  fractionCircle,
+  equationSteps,
+  codeTrace,
+  loopTrace,
+  conditionFlow,
+  variableState,
+  processFlow,
+  labeledDiagram,
+  timeline,
+  sentenceBuilder,
+  conceptExplorer,
+}

@@ -1,4 +1,5 @@
 import '../../../core/theme/sahlha_spacing.dart';
+import '../examples/presentation/adaptive_example_screen.dart';
 import 'widgets/joyful_cards.dart';
 import 'widgets/learning_playground.dart';
 import 'widgets/playful_background.dart';
@@ -430,39 +431,10 @@ class _LessonReadingState extends State<_LessonReading> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // SEE: large colorful concept panel with avatar.
-                  SkillConceptPanel(
-                    title: _examples
-                        ? 'Let\u2019s explore how it works!'
-                        : 'Let\u2019s explore how this works!',
-                    accent: _examples
-                        ? SahlhaColors.skySoft
-                        : SahlhaColors.warmYellowSoft,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _examples
-                                ? 'I\u2019ll show you what happens!'
-                                : (skill.keyConcepts.isNotEmpty
-                                      ? cleanStudentText(
-                                          skill.keyConcepts.first,
-                                        )
-                                      : 'One small idea at a time.'),
-                            style: text.bodyMedium?.copyWith(height: 1.55),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const SahlhaAvatar(
-                          size: 72,
-                          state: SahlhaAvatarState.encouraging,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // INTERACT: mini playground / example.
+                  // EXAMPLES: truly interactive visual lesson driven by REAL
+                  // backend SkillHelp/SkillBundle data (no hardcoded content).
+                  // The Future is cached in [_showExamples] so switching tabs
+                  // never refires the request and build() never fetches.
                   if (_examples)
                     FutureBuilder<SkillHelp>(
                       future: _example,
@@ -498,167 +470,149 @@ class _LessonReadingState extends State<_LessonReading> {
                           );
                         }
                         final example = snapshot.data!;
-                        return Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: SahlhaColors.borderSubtle,
-                            ),
-                            boxShadow: SahlhaShadows.soft,
+                        return AdaptiveExampleScreen(
+                          key: ValueKey(
+                            '${widget.materialId}:${widget.skillId}:${example.body.hashCode}',
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'An example',
-                                style: text.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              for (final chunk in lessonSections(example.body))
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Text(
-                                    chunk,
-                                    style: text.bodyLarge?.copyWith(
-                                      height: 1.6,
-                                    ),
-                                  ),
-                                ),
-                              for (final step in example.steps)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(
-                                        Icons.arrow_right_rounded,
-                                        color: SahlhaColors.joyTeal,
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          cleanStudentText(step),
-                                          style: text.bodyMedium,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
+                          skill: skill,
+                          example: example,
+                          audio: audio,
                         );
                       },
                     )
-                  else
+                  else ...[
+                    // SEE: large colorful concept panel with avatar.
+                    SkillConceptPanel(
+                      title: 'Let\u2019s explore how this works!',
+                      accent: SahlhaColors.warmYellowSoft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              (skill.keyConcepts.isNotEmpty
+                                  ? cleanStudentText(skill.keyConcepts.first)
+                                  : 'One small idea at a time.'),
+                              style: text.bodyMedium?.copyWith(height: 1.55),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const SahlhaAvatar(
+                            size: 72,
+                            state: SahlhaAvatarState.encouraging,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // INTERACT: mini playground (Learn tab only).
                     LearningPlayground(
                       skill: skill,
                       audioUrl: widget.audioUrl,
                       subject: skill.subject,
                     ),
-                  const SizedBox(height: 16),
-                  // The idea: short digestible explanation.
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: SahlhaColors.borderSubtle),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          index == 0 ? 'The idea' : 'A closer look',
-                          style: text.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
+                    const SizedBox(height: 16),
+                    // The idea: short digestible explanation.
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: SahlhaColors.borderSubtle),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            index == 0 ? 'The idea' : 'A closer look',
+                            style: text.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          chunks[index],
-                          style: text.bodyLarge?.copyWith(height: 1.65),
-                        ),
-                        if (chunks.length > 1)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(99),
-                                    child: LinearProgressIndicator(
-                                      value: (index + 1) / chunks.length,
-                                      minHeight: 6,
-                                      backgroundColor: SahlhaColors.tealSoft,
-                                      valueColor: const AlwaysStoppedAnimation(
-                                        SahlhaColors.joyTeal,
+                          const SizedBox(height: 8),
+                          Text(
+                            chunks[index],
+                            style: text.bodyLarge?.copyWith(height: 1.65),
+                          ),
+                          if (chunks.length > 1)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(99),
+                                      child: LinearProgressIndicator(
+                                        value: (index + 1) / chunks.length,
+                                        minHeight: 6,
+                                        backgroundColor: SahlhaColors.tealSoft,
+                                        valueColor:
+                                            const AlwaysStoppedAnimation(
+                                              SahlhaColors.joyTeal,
+                                            ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Part ${index + 1} of ${chunks.length}',
-                                  style: text.bodySmall?.copyWith(
-                                    color: SahlhaColors.muted,
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Part ${index + 1} of ${chunks.length}',
+                                    style: text.bodySmall?.copyWith(
+                                      color: SahlhaColors.muted,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // HEAR: avatar + read aloud (mouth sync via player state).
+                    audio,
+                    const SizedBox(height: 12),
+                    ExpansionTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      collapsedShape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      backgroundColor: Colors.white,
+                      collapsedBackgroundColor: Colors.white,
+                      title: const Text('Explore the lesson diagram'),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          child: SkillVisualCard(
+                            skillId: widget.skillId,
+                            materialId: widget.materialId,
+                            classroomId: widget.classroomId,
+                            supplementary: widget.supplementary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton.icon(
+                            onPressed: widget.help,
+                            icon: const Icon(Icons.lightbulb_outline_rounded),
+                            label: const Text('Help me'),
+                          ),
+                        ),
+                        if (index > 0)
+                          TextButton(
+                            onPressed: () {
+                              setState(() => _section--);
+                              _scroll.jumpTo(0);
+                            },
+                            child: const Text('Read the previous part'),
                           ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  // HEAR: avatar + read aloud (mouth sync via player state).
-                  audio,
-                  const SizedBox(height: 12),
-                  ExpansionTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    collapsedShape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    backgroundColor: Colors.white,
-                    collapsedBackgroundColor: Colors.white,
-                    title: const Text('Explore the lesson diagram'),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: SkillVisualCard(
-                          skillId: widget.skillId,
-                          materialId: widget.materialId,
-                          classroomId: widget.classroomId,
-                          supplementary: widget.supplementary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: widget.help,
-                          icon: const Icon(Icons.lightbulb_outline_rounded),
-                          label: const Text('Help me'),
-                        ),
-                      ),
-                      if (index > 0 && !_examples)
-                        TextButton(
-                          onPressed: () {
-                            setState(() => _section--);
-                            _scroll.jumpTo(0);
-                          },
-                          child: const Text('Read the previous part'),
-                        ),
-                    ],
-                  ),
+                  ],
                 ],
               ),
             ),

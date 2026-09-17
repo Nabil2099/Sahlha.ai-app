@@ -39,6 +39,9 @@ abstract class PathUnit with _$PathUnit {
 @freezed
 abstract class SkillBundle with _$SkillBundle {
   const factory SkillBundle({
+    @JsonKey(name: 'example_metadata', includeToJson: false)
+    @Default({})
+    Map<String, dynamic> exampleMetadata,
     @JsonKey(name: 'skill_id') @Default('') String skillId,
     @Default('') String name,
     @Default('') String subject,
@@ -56,12 +59,15 @@ abstract class SkillBundle with _$SkillBundle {
   }) = _SkillBundle;
 
   factory SkillBundle.fromJson(Map<String, dynamic> json) =>
-      _$SkillBundleFromJson(json);
+      _$SkillBundleFromJson({...json, 'example_metadata': json});
 }
 
 @freezed
 abstract class SkillHelp with _$SkillHelp {
   const factory SkillHelp({
+    @JsonKey(name: 'example_metadata', includeToJson: false)
+    @Default({})
+    Map<String, dynamic> exampleMetadata,
     @Default('') String kind,
     @Default('') String title,
     @Default('') String body,
@@ -71,5 +77,5 @@ abstract class SkillHelp with _$SkillHelp {
   }) = _SkillHelp;
 
   factory SkillHelp.fromJson(Map<String, dynamic> json) =>
-      _$SkillHelpFromJson(json);
+      _$SkillHelpFromJson({...json, 'example_metadata': json});
 }
