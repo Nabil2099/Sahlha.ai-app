@@ -11,7 +11,7 @@ Future<void> main() async {
   final container = await bootstrap();
   runApp(
     DevicePreview(
-      enabled: kDebugMode,
+      enabled: kDebugMode && kIsWeb,
       builder: (_) => UncontrolledProviderScope(
         container: container,
         child: const SahlhaApp(),

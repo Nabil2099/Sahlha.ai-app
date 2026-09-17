@@ -1,4 +1,5 @@
 import 'package:device_preview/device_preview.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,8 +17,8 @@ class SahlhaApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: SahlhaTheme.light(),
       routerConfig: router,
-      locale: DevicePreview.locale(context),
-      builder: DevicePreview.appBuilder,
+      locale: kIsWeb ? DevicePreview.locale(context) : null,
+      builder: kIsWeb ? DevicePreview.appBuilder : null,
     );
   }
 }
