@@ -11,9 +11,12 @@ def retrieve_lesson(db: Session, course_id: str, lesson_id: str, top_k: int = 5)
     return retriever.retrieve_lesson(db, course_id, lesson_id, top_k=top_k)
 
 
-def retrieve_skill_material(db: Session, skill_id: str, top_k: int = 5) -> list[dict]:
-    """Retrieve chunks for a specific skill."""
-    return retriever.retrieve_skill(db, skill_id, top_k=top_k)
+def retrieve_skill_material(db: Session, skill_id: str, top_k: int = 5,
+                            course_id: str | None = None,
+                            lesson_id: str | None = None) -> list[dict]:
+    """Retrieve chunks for a specific skill (scoped when course/lesson given)."""
+    return retriever.retrieve_skill(db, skill_id, top_k=top_k,
+                                    course_id=course_id, lesson_id=lesson_id)
 
 
 def retrieve_relevant_material(db: Session, query: str, top_k: int = 5,

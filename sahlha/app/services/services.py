@@ -24,10 +24,11 @@ def generate_bank(db: Session, *, course_id: str, lesson_id: str, skill_id: str,
 
 
 def extract_skills(db: Session, *, course_id: str, lesson_id: str,
-                   n_skills: int | None = None, max_skills: int = 6, force: bool = False) -> dict:
+                   n_skills: int | None = None, max_skills: int | None = None, force: bool = False) -> dict:
     """Agent splits the lesson into skills AND writes an explanation per skill.
 
     Also ensures the whole-lesson overview explanation exists.
+    `max_skills=None` (default) uses the dynamic lesson-complexity cap.
     """
     agent = SahlhaAgent(db, AgentState())
     out = agent.extract_skills(course_id=course_id, lesson_id=lesson_id,
@@ -161,15 +162,17 @@ def skill_progress(db: Session, *, student_id: str, course_id: str, lesson_id: s
     student = repo.get_student(db, student_id)
     if not student:
         raise ValueError("Student not found")
-    approved = repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
+    # Readiness uses the latest active approved bank per skill; attempt mapping
+    # keeps history so old progress is preserved.
+    latest = repo.get_latest_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
+    history = repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
     by_skill: dict[str, list] = {}
-    for q in approved:
+    for q in latest:
         by_skill.setdefault(q.skill_id, []).append(q)
     # Map the student's attempts onto skills via question -> bank -> skill.
     q_to_skill: dict[str, str] = {}
-    for skill_id, questions in by_skill.items():
-        for q in questions:
-            q_to_skill[q.id] = skill_id
+    for q in history:
+        q_to_skill[q.id] = q.skill_id
     per_skill_attempts: dict[str, list] = {}
     for a in repo.get_attempts(db, student_id, limit=10000):
         skid = q_to_skill.get(a.question_id)

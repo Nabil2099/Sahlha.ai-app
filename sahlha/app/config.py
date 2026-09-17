@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     vectorizer_path: str = "./data/tfidf_vectorizer.pkl"
     vector_cache_path: str = "./data/vectors.npz"
     dense_embeddings_enabled: bool = True
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_warmup: bool = True
     vector_incremental_churn: float = 0.35
     mmr_lambda: float = 0.7
@@ -20,11 +20,14 @@ class Settings(BaseSettings):
     tesseract_cmd: str = ""
     poppler_path: str = ""
     ocr_min_chars: int = 50
-    ocr_languages: str = "eng"
+    ocr_languages: str = "eng+ara"
     ocr_dpi: int = 250
     reranker_enabled: bool = False
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    reranker_candidate_multiplier: int = 3
+    reranker_max_candidates: int = 30
     enable_llm_critique: bool = False
+    semantic_verification_enabled: bool = True
     legacy_dev_api_enabled: bool = False
 
     # ---- Auth (JWT) ----
@@ -78,7 +81,18 @@ class Settings(BaseSettings):
     chunk_size: int = 800
     chunk_overlap: int = 120
     top_k_retrieval: int = 5
-    assessment_num_questions: int = 4  # questions selected from EACH approved bank
+    assessment_num_questions: int = 4  # questions selected from EACH skill's latest approved bank
+
+    # ---- Skill discovery capacity (dynamic soft cap + hard safety bound) ----
+    skill_discovery_min_cap: int = 6
+    skill_discovery_hard_cap: int = 22
+
+    # ---- Task-specific LLM temperatures (bounded, grounding-first) ----
+    skill_extraction_temperature: float = 0.15
+    skill_consolidation_temperature: float = 0.15
+    semantic_verifier_temperature: float = 0.1
+    question_generation_temperature: float = 0.4
+    explanation_temperature: float = 0.3
 
 
 settings = Settings()

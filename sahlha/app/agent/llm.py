@@ -26,7 +26,7 @@ def llm_available() -> bool:
     return bool(_resolve_provider()[0])
 
 
-def _provider_completion(provider, api_key, model, system, user):
+def _provider_completion(provider, api_key, model, system, user, temperature: float = 0.4):
     from openai import OpenAI
     from sahlha.app.config import settings
     base = {"groq": settings.groq_base_url, "openrouter": settings.openrouter_base_url,
@@ -37,25 +37,59 @@ def _provider_completion(provider, api_key, model, system, user):
     with OpenAI(**kwargs) as client:
         response = client.chat.completions.create(model=model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=0.4, response_format={"type": "json_object"})
+            temperature=temperature, response_format={"type": "json_object"})
         return response.choices[0].message.content or "{}"
 
 
-def _call_llm(system: str, user: str) -> tuple[str, str]:
+def temperature_for(task: str) -> float:
+    """Task-specific temperatures: deterministic for extraction/verification."""
+    from sahlha.app.config import settings
+    mapping = {
+        "skill_extraction": settings.skill_extraction_temperature,
+        "skill_consolidation": settings.skill_consolidation_temperature,
+        "semantic_verifier": settings.semantic_verifier_temperature,
+        "question_generation": settings.question_generation_temperature,
+        "explanation": settings.explanation_temperature,
+    }
+    return float(mapping.get(task, 0.4))
+
+
+def _call_llm(system: str, user: str, temperature: float = 0.4) -> tuple[str, str]:
     from sahlha.app.config import settings
     from sahlha.app.agent.providers import retryable_provider_error, logger
     provider, key, model = _resolve_provider()
     if not provider:
         raise RuntimeError("no-llm-configured")
     try:
-        return _provider_completion(provider, key, model, system, user), provider
+        return _provider_completion(provider, key, model, system, user, temperature), provider
     except Exception as exc:
         logger.info("Text provider unavailable: provider=%s category=%s", provider, type(exc).__name__)
         if provider != "groq" or not retryable_provider_error(exc) or not settings.openrouter_api_key.strip() or not settings.openrouter_model:
             raise
     # Exactly one cross-provider attempt; SDK retries are disabled.
     return _provider_completion("openrouter", settings.openrouter_api_key.strip(),
-                                settings.openrouter_model, system, user), "openrouter"
+                                settings.openrouter_model, system, user, temperature), "openrouter"
+
+
+def _alternate_provider() -> tuple[str, str, str]:
+    """Configured alternate provider for one bounded failover attempt (schema repair)."""
+    from sahlha.app.config import settings
+    primary, _, _ = _resolve_provider()
+    if primary == "groq" and settings.openrouter_api_key.strip() and settings.openrouter_model:
+        return "openrouter", settings.openrouter_api_key.strip(), settings.openrouter_model
+    return "", "", ""
+
+
+def _parse_json_object(text: str):
+    raw = (text or "").strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if m:
+        return json.loads(m.group(0))
+    raise ValueError("LLM did not return parseable JSON")
 
 
 def _extract_json_array(text: str) -> list:
@@ -124,32 +158,92 @@ def fallback_questions(context_chunks: list[dict], skill_id: str, n: int = 8,
 
 def generate_questions_llm(system: str, user: str, context_chunks: list[dict],
                             skill_id: str, n: int, feedback: str = "") -> tuple[list[dict], str]:
-    """Returns (questions, backend) where backend is 'groq'/'openai' or 'fallback'."""
+    """Returns (questions, backend) where backend is 'groq'/'openai' or 'fallback(...)'.
+
+    Bounded resilience: 1 normal attempt + 1 schema-repair attempt +
+    optionally 1 alternate-provider attempt, then deterministic fallback.
+    """
     if llm_available():
         try:
-            raw, provider = _call_llm(system, user)
-            return _extract_json_array(raw), provider
+            raw, provider = _call_llm(system, user, temperature_for("question_generation"))
+            try:
+                return _extract_json_array(raw), provider
+            except Exception as parse_exc:
+                repaired, repaired_provider = _repair_json_array(
+                    system, user, raw, str(parse_exc),
+                    temperature_for("question_generation"))
+                return repaired, repaired_provider
         except Exception as exc:
             # Fail soft to grounded fallback so the loop never breaks
             return fallback_questions(context_chunks, skill_id, n, feedback), f"fallback({type(exc).__name__})"
     return fallback_questions(context_chunks, skill_id, n, feedback), "fallback(no-api-key)"
 
 
-def complete_json(system: str, user: str) -> tuple[dict | list, str]:
-    """Generic structured call. Returns (parsed_json, backend). Falls back raises-free? No:
-    raises RuntimeError when no LLM is configured so callers can use grounded fallbacks."""
+def _repair_json_array(system: str, user: str, malformed: str, error: str,
+                       temperature: float) -> tuple[list, str]:
+    """One bounded repair attempt (+ optionally one alternate-provider attempt)."""
+    from sahlha.app.agent.providers import logger
+    bounded = (malformed or "")[:4000]
+    repair_system = (system + "\nYour previous response was not valid for the required schema. "
+                     "Fix it and return ONLY valid JSON matching the contract.")
+    repair_user = (f"Validation error: {error[:500]}\n"
+                   f"Required schema: {{\"questions\": [{{...}}]}}\n"
+                   f"Previous response (truncated):\n{bounded}\n"
+                   f"Original request:\n{user[:4000]}")
+    try:
+        raw, provider = _call_llm(repair_system, repair_user, temperature)
+        return _extract_json_array(raw), provider + "+repair"
+    except Exception as exc:
+        logger.info("Structured repair failed: category=%s", type(exc).__name__)
+        alt_provider, alt_key, alt_model = _alternate_provider()
+        if alt_provider:
+            try:
+                raw = _provider_completion(alt_provider, alt_key, alt_model,
+                                           repair_system, repair_user, temperature)
+                return _extract_json_array(raw), alt_provider + "+repair"
+            except Exception as exc2:
+                logger.info("Alternate-provider repair failed: category=%s", type(exc2).__name__)
+                raise exc2 from exc
+        raise
+
+
+def complete_json(system: str, user: str, temperature: float | None = None,
+                  task: str = "general") -> tuple[dict | list, str]:
+    """Generic structured call with bounded repair (1 normal + 1 repair + 1 alternate).
+
+    Raises RuntimeError when no LLM is configured so callers can use grounded
+    fallbacks. Raises RuntimeError(llm-error:...) after bounded attempts fail.
+    """
     if not llm_available():
         raise RuntimeError("no-llm-configured")
+    temp = temperature if temperature is not None else (temperature_for(task) if task != "general" else 0.4)
     try:
-        raw, provider = _call_llm(system, user)
-        text = raw.strip()
+        raw, provider = _call_llm(system, user, temp)
         try:
-            return json.loads(text), provider
-        except Exception:
-            m = re.search(r"\{.*\}", text, re.DOTALL)
-            if m:
-                return json.loads(m.group(0)), provider
-            raise ValueError("LLM did not return parseable JSON")
+            return _parse_json_object(raw), provider
+        except Exception as parse_exc:
+            bounded = (raw or "")[:4000]
+            repair_system = (system + "\nYour previous response was not valid JSON for the required schema. "
+                             "Fix it and return ONLY valid JSON.")
+            repair_user = (f"Validation error: {str(parse_exc)[:500]}\n"
+                           f"Previous response (truncated):\n{bounded}\n"
+                           f"Original request:\n{user[:4000]}")
+            try:
+                raw2, provider2 = _call_llm(repair_system, repair_user, temp)
+                return _parse_json_object(raw2), provider2 + "+repair"
+            except Exception as exc:
+                from sahlha.app.agent.providers import logger as _logger
+                _logger.info("Structured repair failed: category=%s", type(exc).__name__)
+                alt_provider, alt_key, alt_model = _alternate_provider()
+                if alt_provider:
+                    try:
+                        raw3 = _provider_completion(alt_provider, alt_key, alt_model,
+                                                    repair_system, repair_user, temp)
+                        return _parse_json_object(raw3), alt_provider + "+repair"
+                    except Exception as exc2:
+                        _logger.info("Alternate-provider repair failed: category=%s", type(exc2).__name__)
+                        raise exc2 from exc
+                raise
     except RuntimeError:
         raise
     except Exception as exc:

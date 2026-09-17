@@ -102,7 +102,8 @@ def test_scanned_pdf_is_rendered_one_page_at_a_time(monkeypatch):
     monkeypatch.setattr(pdf2image, "pdfinfo_from_bytes", lambda *args, **kwargs: {"Pages": 3})
     monkeypatch.setattr(pdf2image, "convert_from_bytes", render)
     monkeypatch.setattr(pytesseract, "image_to_string", lambda image, **kwargs: f"Page {image.page}")
-    text, method = _try_ocr_images(b"scan", ".pdf")
+    out = _try_ocr_images(b"scan", ".pdf")
+    text, method = out[0], out[1]
     assert rendered == closed == [1, 2, 3]
     assert "Page 3" in text
     assert method == "ocr:tesseract(pdf2image)"
@@ -116,7 +117,8 @@ def test_scan_timeout_does_not_report_partial_success(monkeypatch):
     monkeypatch.setattr(pdf2image, "convert_from_bytes", lambda *args, **kwargs: [])
     times = iter([0, 46])
     monkeypatch.setattr("sahlha.app.rag.ocr.time.monotonic", lambda: next(times))
-    text, method = _try_ocr_images(b"scan", ".pdf")
+    out = _try_ocr_images(b"scan", ".pdf")
+    text, method = out[0], out[1]
     assert text == ""
     assert method.startswith("ocr:failed")
     assert "smaller scan" in method

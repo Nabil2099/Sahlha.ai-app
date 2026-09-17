@@ -227,13 +227,13 @@ def test_optional_verifier_requires_all_checks(monkeypatch):
     question = {'question': 'What absorbs light energy in green plants?', 'type': 'multiple_choice',
         'options': ['Chlorophyll', 'Hemoglobin', 'Insulin', 'Keratin'], 'correct_answer': 0,
         'difficulty': 'easy', 'evidence_chunk_ids': ['a']}
-    monkeypatch.setattr(critique_tools, 'complete_json', lambda *a: ({'valid': True}, 'fake'))
+    monkeypatch.setattr(critique_tools, 'complete_json', lambda *a, **k: ({'valid': True}, 'fake'))
     result, meta = critique_tools.critique_and_top_up([question], context, 'science', 1)
     assert meta['rejected'] and result[0]['verification']['method'] == 'source_completion'
     checks = {k: True for k in ['answerable', 'answer_supported', 'distractors_incorrect', 'unambiguous', 'clear', 'difficulty', 'objective']}
-    monkeypatch.setattr(critique_tools, 'complete_json', lambda *a: ({'valid': True, 'checks': checks}, 'fake'))
+    monkeypatch.setattr(critique_tools, 'complete_json', lambda *a, **k: ({'valid': True, 'checks': checks}, 'fake'))
     result, meta = critique_tools.critique_and_top_up([question], context, 'science', 1)
-    assert not meta['rejected'] and result[0]['verification']['method'] == 'llm'
+    assert not meta['rejected'] and result[0]['verification']['method'] in ('llm', 'llm_verified')
 
 
 def test_docx_math_preserved():

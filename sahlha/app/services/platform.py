@@ -157,14 +157,18 @@ def material_to_dict(db: Session, mat: m.LearningMaterial) -> dict:
 # ------------------------------------------------------------------ skills
 def skill_dict(db: Session, course_id: str, lesson_id: str, row) -> dict:
     banks = repo.scoped_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id)
+    latest = repo.latest_approved_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id)
     approved = [b for b in banks if b.status == "approved"]
     pending = [b for b in banks if b.status == "pending_review"]
+    latest_ids = {b.id for b in latest}
+    latest_count = len(repo.get_latest_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id))
     return {"id": row.id, "course_id": row.course_id, "lesson_id": row.lesson_id,
             "skill_id": row.skill_id, "name": row.name, "description": row.description,
             "explanation": row.explanation, "key_concepts": row.key_concepts or [],
             "has_image": image_tools.valid_image_file(row.image_path), "image_alt": row.image_alt or "",
             "has_audio": audio_tools.valid_audio_file(row.audio_path),
-            "approved_questions": len(repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id)),
+            "approved_questions": latest_count,
+            "active_bank_ids": sorted(latest_ids),
             "bank_status": ("approved" if approved else "pending" if pending
                             else ("rejected" if banks else "none"))}
 
@@ -215,30 +219,49 @@ def remove_question(db: Session, bank: m.QuestionBank, question_id: str) -> dict
 
 def regenerate_question(db: Session, bank: m.QuestionBank, question_id: str,
                         feedback: str = "") -> dict:
-    """Replace ONE question with a freshly generated one (stays pending review)."""
+    """Replace ONE question with a freshly generated one (stays pending review).
+
+    Strictly evidence-scoped: uses the same skill_evidence() source logic as
+    normal bank generation. Never widens skill -> lesson -> global silently.
+    """
     from sahlha.app.agent.llm import generate_questions_llm
     from sahlha.app.agent.prompts import build_question_prompt
     from sahlha.app.agent.schemas import QuestionList
-    from sahlha.app.agent.tools import rag_tools
+    from sahlha.app.agent.tools import content_tools
 
     if bank.status == "approved":
         raise ValueError("Approved bank history is preserved. Regenerate a new bank version before editing questions.")
     q = db.get(m.Question, question_id)
     if q is None or q.question_bank_id != bank.id:
         raise ValueError("Question not found")
-    chunks = rag_tools.retrieve_relevant_material(
-        db, f"{bank.skill_id} {bank.lesson_id} key concepts examples",
-        top_k=5, course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id)
+    skill_row = repo.get_skill(db, course_id=bank.course_id, lesson_id=bank.lesson_id,
+                               skill_id=bank.skill_id)
+    objective = (skill_row.learning_objective if skill_row and skill_row.learning_objective
+                 else f'Explain {bank.skill_id.replace("_", " ")}.')
+    query = f"{bank.skill_id} {objective} {skill_row.name if skill_row else ''}".strip()
+    chunks = content_tools.skill_evidence(db, course_id=bank.course_id, lesson_id=bank.lesson_id,
+                                          skill_id=bank.skill_id, query=query, top_k=8)
+    for chunk in chunks:
+        chunk.setdefault('learning_objective', objective)
     if not chunks:
-        chunks = rag_tools.retrieve_lesson(db, bank.course_id, bank.lesson_id, top_k=5)
+        raise ValueError("No source evidence is available within this skill scope. "
+                         "Re-extract skills or upload more detailed lesson content.")
+    # Strict scope assertion: every cited chunk must belong to the exact scope.
+    for chunk in chunks:
+        if not (chunk.get("course_id") == bank.course_id
+                and chunk.get("lesson_id") == bank.lesson_id):
+            raise ValueError("Evidence scope violation during regeneration.")
     reasons = repo.get_flag_reasons_for_skill(db, course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id)
     if reasons:
         feedback += "\nPrevious teacher feedback to avoid:\n" + "\n".join(reasons)
+    key_concepts = list(skill_row.key_concepts or []) if skill_row else []
+    misconceptions = list(skill_row.misconceptions or []) if skill_row else []
     system, user = build_question_prompt(
         course_id=bank.course_id, lesson_id=bank.lesson_id, skill_id=bank.skill_id,
         context_chunks=chunks,
         feedback=feedback or "Generate a different question on the same skill.",
-        n=3)
+        n=3, objective=objective, key_concepts=key_concepts,
+        misconceptions=misconceptions)
     generated, backend = generate_questions_llm(system, user, chunks, bank.skill_id, 3,
                                                 feedback or "different question")
     from sahlha.app.agent.tools.critique_tools import critique_and_top_up
@@ -300,7 +323,8 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
     per_skill = _attempts_by_skill(db, student_id, course_id, lesson_id)
     perf_rows = {p.skill_id: p for p in repo.get_skill_performance(
         db, student_id, course_id=course_id, lesson_id=lesson_id)}
-    approved_questions = repo.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
+    # Readiness/counts use ONLY the latest active approved bank per skill.
+    latest_questions = repo.get_latest_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
     out = []
     for row in repo.list_skills(db, course_id=course_id, lesson_id=lesson_id):
         atts = per_skill.get(row.skill_id, [])
@@ -312,12 +336,9 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
             attempted = perf.total_attempts
         else:
             attempted = len(atts)
-        usable = [q for q in approved_questions if q.skill_id == row.skill_id]
-        counts = {}
-        for question in usable:
-            counts[question.question_bank_id] = counts.get(question.question_bank_id, 0) + 1
+        usable = [q for q in latest_questions if q.skill_id == row.skill_id]
         bank_questions = len(usable)
-        ready = bool(counts) and all(count >= settings.assessment_num_questions for count in counts.values())
+        ready = bank_questions >= settings.assessment_num_questions
         out.append({"id": row.id, "skill_id": row.skill_id, "name": row.name,
                     "description": row.description, "explanation": bool(row.explanation),
                     "attempted": attempted, "correct": correct if not perf else perf.correct_attempts,
@@ -325,7 +346,7 @@ def skill_states_for_lesson(db: Session, *, student_id: str, course_id: str,
                         attempted=attempted, accuracy=accuracy),
                     "exercise_ready": ready,
                     "bank_questions": bank_questions,
-                    "practice_questions": len(counts) * settings.assessment_num_questions if ready else 0})
+                    "practice_questions": settings.assessment_num_questions if ready else 0})
     return out
 
 
@@ -387,8 +408,20 @@ def skill_bundle(db: Session, *, student_id: str, course_id: str, lesson_id: str
     # Light presentation adaptation from the profile (short + calm by default).
     if prof is not None and prof.reading_support == "short_chunks_audio":
         explanation = _shorten(explanation)
+    learning_content = row.learning_content or {}
+    visual_type = (learning_content.get("visual_type") or "none") if isinstance(learning_content, dict) else "none"
+    visual_spec = (learning_content.get("visual_spec") or {}) if isinstance(learning_content, dict) else {}
+    playground = (learning_content.get("playground") or {}) if isinstance(learning_content, dict) else {}
     return {"skill_id": row.skill_id, "name": row.name, "description": row.description,
             "explanation": explanation, "key_concepts": row.key_concepts or [],
+            "learning_objective": row.learning_objective or "",
+            "prerequisites": row.prerequisites or [],
+            "misconceptions": row.misconceptions or [],
+            "difficulty": row.difficulty or "",
+            "source_section_ids": row.source_section_ids or [],
+            "evidence_chunk_ids": row.evidence_chunk_ids or [],
+            "learning_content": learning_content,
+            "visual_type": visual_type, "visual_spec": visual_spec, "playground": playground,
             "has_image": image_tools.valid_image_file(row.image_path), "image_alt": row.image_alt or "",
             "has_audio": audio_tools.valid_audio_file(row.audio_path),
             "position": idx + 1, "total": len(skills),

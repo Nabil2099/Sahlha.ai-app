@@ -22,8 +22,13 @@ class TfidfEmbeddingModel:
 
     def fit(self, texts: list[str]):
         from sahlha.app.config import settings
+        from sahlha.app.rag.textnorm import multilingual_tokenizer
 
-        self.vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2), stop_words="english")
+        # Multilingual-safe TF-IDF: custom tokenizer, no global English stop list.
+        self.vectorizer = TfidfVectorizer(
+            max_features=5000, ngram_range=(1, 2), stop_words=None,
+            tokenizer=multilingual_tokenizer,
+            preprocessor=None, lowercase=False, token_pattern=None)
         mat = self.vectorizer.fit_transform(texts)
         os.makedirs(os.path.dirname(os.path.abspath(settings.vectorizer_path)), exist_ok=True)
         with open(settings.vectorizer_path, "wb") as fh:
@@ -63,7 +68,9 @@ class DenseEmbeddingModel:
         self.model_name = model_name or settings.embedding_model
         self.backend = f"dense:{self.model_name}"
         self.model = SentenceTransformer(self.model_name)
-        dimension_getter = getattr(self.model, "get_sentence_embedding_dimension", None)
+        dimension_getter = getattr(self.model, "get_embedding_dimension", None)
+        if dimension_getter is None:
+            dimension_getter = getattr(self.model, "get_sentence_embedding_dimension", None)
         self.dimension = dimension_getter() if dimension_getter else None
 
     def embed(self, texts):

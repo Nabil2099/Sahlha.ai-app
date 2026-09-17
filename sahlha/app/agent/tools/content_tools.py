@@ -40,13 +40,16 @@ def build_content_map(db, course_id, lesson_id):
             'tables': [b['text'] for b in source_blocks if b['type'] == 'table'] or ([c['text']] if c['type'] == 'table' else []),
             'important_facts': sentences, 'concepts': []})
     text = ' '.join(c['text'] for c in chunks).lower()
-    domains = {'programming': ('python', 'loop', 'variable', 'code', 'elif'),
-               'math': ('equation', 'fraction', 'algebra', 'number'),
-               'science': ('cell', 'photosynthesis', 'energy', 'organism'),
-               'history': ('empire', 'war', 'century', 'revolution'),
-               'geography': ('latitude', 'longitude', 'continent', 'river'),
-               'language': ('grammar', 'sentence', 'verb', 'noun')}
-    scores = {k: sum(len(re.findall(r'\b'+w+r'\w*\b', text)) for w in words) for k, words in domains.items()}
+    domains = {'programming': ('python', 'loop', 'variable', 'code', 'elif', 'function', 'دالة', 'حلقة', 'شرط'),
+               'math': ('equation', 'fraction', 'algebra', 'number', 'multiplication', 'معادلة', 'كسر', 'جبر', 'عدد', 'ضرب', 'قيمة'),
+               'science': ('cell', 'photosynthesis', 'energy', 'organism', 'خلية', 'تمثيل', 'ضوئي', 'طاقة', 'كائن'),
+               'biology': ('cell', 'organelle', 'nucleus', 'mitochondria', 'membrane', 'خلية', 'عضية', 'نواة', 'غشاء'),
+               'chemistry': ('atom', 'molecule', 'reaction', 'element', 'compound', 'ذرة', 'جزيء', 'تفاعل', 'عنصر', 'مركب'),
+               'history': ('empire', 'war', 'century', 'revolution', 'kingdom', 'إمبراطورية', 'حرب', 'قرن', 'ثورة', 'مملكة', 'تاريخ'),
+               'geography': ('latitude', 'longitude', 'continent', 'river', 'map', 'خط عرض', 'خط طول', 'قارة', 'نهر', 'خريطة'),
+               'language': ('grammar', 'sentence', 'verb', 'noun', 'قواعد', 'جملة', 'فعل', 'اسم', 'لغة'),
+               'physics': ('force', 'velocity', 'energy', 'motion', 'قوة', 'سرعة', 'طاقة', 'حركة')}
+    scores = {k: sum(len(re.findall(r'\b'+re.escape(w)+r'\w*\b', text)) + text.count(w) * 0.5 for w in words) for k, words in domains.items()}
     domain = max(scores, key=scores.get) if any(scores.values()) else 'general'
     payload = {'title': next((c['section'] for c in chunks if c['section']), lesson_id.replace('_', ' ')),
                'sections': sections, 'domain': domain, 'chunk_count': len(chunks),
@@ -174,9 +177,10 @@ def validate_skills(candidates, chunks, max_skills):
         skill['source_section_ids'] = list(dict.fromkeys(evidence[i]['section_id'] for i in ids))
         skill['evidence_chunk_ids'] = ids
         skill['learning_objective'] = skill.get('learning_objective') or f'Explain {name.lower()}.'
-        key = set(re.findall(r'\w+', name.lower())) - {'fundamentals', 'basics', 'introduction', 'to'}
+        key = set(re.findall(r'\w+', name.lower())) - {'fundamentals', 'basics', 'introduction', 'to', 'continued', 'part', 'overview'}
         duplicate = next((s for s in accepted if s['skill_id'] == skill['skill_id'] or
-            len(key & s['_key']) / max(1, len(key | s['_key'])) >= .65 or
+            len(key & s['_key']) / max(1, len(key | s['_key'])) >= .5 or
+            (key and (key <= s['_key'] or s['_key'] <= key)) or
             s['learning_objective'].strip().lower() == skill['learning_objective'].strip().lower()), None)
         if duplicate:
             duplicate['evidence_chunk_ids'] = list(dict.fromkeys(duplicate['evidence_chunk_ids'] + ids))
@@ -190,6 +194,78 @@ def validate_skills(candidates, chunks, max_skills):
     for s in accepted:
         s.pop('_key', None)
     return accepted[:max_skills], warnings
+
+
+def dynamic_skill_cap(content_map, chunks, candidate_count: int,
+                      explicit_max: int | None = None) -> int:
+    """Dynamic soft cap: small lessons ~6, medium ~10-14, large up to hard cap.
+
+    If the caller explicitly supplies max_skills, it is always respected.
+    Otherwise capacity grows with instructional sections/chunks/length/candidates.
+    Never forces every lesson toward the maximum.
+    """
+    from sahlha.app.config import settings
+    hard = max(1, settings.skill_discovery_hard_cap)
+    soft_min = max(1, settings.skill_discovery_min_cap)
+    if explicit_max is not None:
+        return max(1, min(int(explicit_max), hard))
+    sections = len(content_map.get("sections", []) or [])
+    n_chunks = len(chunks or [])
+    total_chars = sum(len((c.get("text") or "")) for c in (chunks or []))
+    candidates = int(candidate_count or 0)
+    cap = soft_min
+    if n_chunks >= 6 or sections >= 4 or candidates >= 8 or total_chars > 8000:
+        cap = 12
+    if n_chunks >= 10 or sections >= 7 or candidates >= 12 or total_chars > 18000:
+        cap = 14
+    if n_chunks >= 16 or sections >= 10 or candidates >= 16 or total_chars > 35000:
+        cap = hard
+    return max(soft_min, min(cap, hard))
+
+
+def consolidate_skills(content_map, candidates, chunks, max_skills: int):
+    """WHOLE-LESSON consolidation (Stage B): merge section proposals globally.
+
+    Uses a bounded LLM consolidator when a provider is configured; otherwise
+    falls back to deterministic validate_skills merging. Always validates
+    deterministically afterwards and references only real section/chunk IDs.
+    Returns (final_skills, warnings, backend_label).
+    """
+    from sahlha.app.agent.schemas import SkillList
+    warnings: list[str] = []
+    if not candidates:
+        return [], ["No candidate topics to consolidate."], "fallback(no-candidates)"
+    # Deterministic pre-validation keeps the consolidator input clean.
+    pre, pre_warnings = validate_skills(candidates, chunks, max(1, max_skills * 2))
+    warnings.extend(pre_warnings)
+    working = pre or candidates
+    try:
+        from sahlha.app.agent.llm import complete_json, llm_available
+        from sahlha.app.agent.prompts import build_skill_consolidation_prompt
+        if not llm_available():
+            raise RuntimeError("no-llm-configured")
+        # Consolidation needs course/lesson context; recover from content chunks.
+        course_id = (chunks[0].get("course_id") if chunks else "general")
+        lesson_id = (chunks[0].get("lesson_id") if chunks else "lesson_1")
+        system, user = build_skill_consolidation_prompt(
+            course_id=course_id, lesson_id=lesson_id,
+            content_map=content_map, candidates=working, max_skills=max_skills)
+        data, provider = complete_json(system, user, task="skill_consolidation")
+        raw_list = data.get("skills") if isinstance(data, dict) else data
+        validated = SkillList(skills=raw_list or []).skills
+        merged = [item.model_dump() for item in validated]
+        final, post_warnings = validate_skills(merged, chunks, max(1, max_skills))
+        warnings.extend(post_warnings)
+        if not final:
+            # Consolidator dropped everything: keep deterministic pre-merge.
+            final, fallback_warnings = validate_skills(working, chunks, max(1, max_skills))
+            warnings.extend(fallback_warnings + ["Consolidator returned no usable skills; kept section proposals."])
+            return final, warnings, provider + "+consolidation-fallback"
+        return final, warnings, provider + "+consolidation"
+    except Exception as exc:
+        final, fallback_warnings = validate_skills(working, chunks, max(1, max_skills))
+        warnings.extend(fallback_warnings)
+        return final, warnings, f"fallback({type(exc).__name__})"
 
 
 def retire_superseded_skills(db, course_id, lesson_id, active_ids):

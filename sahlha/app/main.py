@@ -73,6 +73,25 @@ def health():
     """
     from sahlha.app.audio import tts as tts_mod
     from sahlha.app.images import pexels as pexels_mod
+    from sahlha.app.agent.llm import llm_available
+    from sahlha.app.config import settings as _settings
 
+    try:
+        from sahlha.app.rag import embeddings as _emb
+        _dense_available = bool(_emb.get_embeddings().dense)
+    except Exception:
+        _dense_available = False
+    try:
+        from sentence_transformers import CrossEncoder as _CE  # noqa: F401
+        _reranker_available = True
+    except Exception:
+        _reranker_available = False
+    from sahlha.app.rag.ocr import discover_tesseract
     return {"ok": True, "tts_configured": tts_mod.tts_available(),
-            "images_configured": pexels_mod.pexels_available()}
+            "images_configured": pexels_mod.pexels_available(),
+            "llm_configured": llm_available(),
+            "dense_embeddings_enabled": bool(_settings.dense_embeddings_enabled),
+            "dense_embeddings_available": _dense_available,
+            "reranker_enabled": bool(_settings.reranker_enabled),
+            "reranker_available": bool(_reranker_available),
+            "ocr_available": bool(discover_tesseract())}

@@ -161,6 +161,20 @@ OCR: native text for PDF/DOCX/**PPTX**/TXT; scanned PDFs/images use Tesseract
 when installed — otherwise ingestion records `ocr:unavailable` and the API
 returns a clear error instead of crashing.
 
+On Windows, install both external OCR dependencies (the Python packages alone
+are not enough):
+
+```powershell
+winget install --id tesseract-ocr.tesseract --exact --source winget
+winget install --id oschwartz10612.Poppler --exact --source winget
+```
+
+The backend detects standard Tesseract and WinGet Poppler installations.
+For custom locations, set `TESSERACT_CMD` to `tesseract.exe` and `POPPLER_PATH`
+to the folder containing `pdfinfo.exe` and `pdftoppm.exe` in `.env`, then restart
+the backend. Install the matching Tesseract language packs when using
+`OCR_LANGUAGES=ara+eng`.
+
 ## 7. Run the backend
 
 ```powershell
@@ -190,6 +204,19 @@ API base URL configuration (`--dart-define API_BASE_URL=...`):
   `http://127.0.0.1:8000`
 - **Physical device over Wi-Fi**: use your machine's LAN IP,
   e.g. `http://192.168.1.10:8000`, with the backend bound to `0.0.0.0`
+
+For a physical Android phone connected by USB, keep the backend running in
+one terminal, then run this from the repository root in another terminal:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-android-usb.ps1
+```
+
+The launcher checks the backend, configures USB port forwarding, and launches
+Flutter with `API_BASE_URL=http://127.0.0.1:8000`. With multiple devices, pass
+`-DeviceId SERIAL`. Run it again after reconnecting the phone. Changing
+`API_BASE_URL` requires restarting the Flutter run, not just hot reload.
+The default `10.0.2.2` address is for the Android emulator only.
 
 If the checked-in `mobile/android/` scaffold ever disagrees with your local
 Flutter/Gradle versions, regenerate the platform folder (your `lib/` code is

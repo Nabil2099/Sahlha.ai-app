@@ -105,10 +105,16 @@ def mmr_select(vectors, scores, count, diversity=0.7):
 
 
 def lexical_scores(query, chunks):
-    """BM25 ranks on the authorized candidate corpus, including code identifiers."""
+    """BM25 ranks on the authorized candidate corpus, including code identifiers.
+
+    Uses multilingual tokenization (Arabic/Latin/code/numbers) so Arabic and
+    mixed lessons retrieve correctly. Never widens scope: scores only the
+    supplied scoped chunks.
+    """
     from collections import Counter
-    terms = re.findall(r"\w+", query.lower())
-    documents = [Counter(re.findall(r"\w+", c.text.lower())) for c in chunks]
+    from sahlha.app.rag.textnorm import multilingual_tokens
+    terms = multilingual_tokens(query, drop_stop=True)
+    documents = [Counter(multilingual_tokens(c.text, drop_stop=True)) for c in chunks]
     lengths = [sum(d.values()) for d in documents]
     average = sum(lengths) / max(1, len(lengths)) or 1
     scores = np.zeros(len(chunks))
@@ -124,24 +130,44 @@ def lexical_scores(query, chunks):
 _rerankers = {}
 
 
-def rerank(query, chunks, candidates):
+def _rerank_bounded(query, chunks, candidates):
+    """Bounded rerank returning (ordered, applied_bool). Internal."""
     if not settings.reranker_enabled or not candidates:
-        return candidates
+        return list(candidates), False
     try:
+        # Bound candidates: capped, never the full corpus.
+        limit = max(1, min(len(candidates), settings.reranker_max_candidates))
+        bounded = list(candidates[:limit])
+        # Preserve any candidates beyond the rerank window in original order.
+        tail = list(candidates[limit:])
         if settings.reranker_model not in _rerankers:
             from sentence_transformers import CrossEncoder
             _rerankers[settings.reranker_model] = CrossEncoder(settings.reranker_model)
         values = np.asarray(_rerankers[settings.reranker_model].predict(
-            [(query, chunks[i].text) for i in candidates]), dtype=float)
-        if values.shape != (len(candidates),) or not np.isfinite(values).all():
+            [(query, chunks[i].text) for i in bounded]), dtype=float)
+        if values.shape != (len(bounded),) or not np.isfinite(values).all():
             raise ValueError("Invalid reranker scores")
-        return [candidates[i] for i in np.argsort(-values, kind='stable')]
+        ordered = [bounded[i] for i in np.argsort(-values, kind='stable')]
+        return ordered + tail, True
     except Exception as exc:
         logging.getLogger(__name__).warning("Optional reranker unavailable (%s)", type(exc).__name__)
-        return candidates
+        return list(candidates), False
+
+
+def rerank(query, chunks, candidates):
+    """Bounded optional cross-encoder reranking (never the full corpus).
+
+    Backwards-compatible: returns the ordered candidate list. Use
+    _rerank_bounded() when the applied flag is needed.
+    """
+    ordered, _ = _rerank_bounded(query, chunks, candidates)
+    return ordered
 
 
 def search(db: Session, query: str, *, top_k: int = 5, course_id=None, lesson_id=None, skill_id=None) -> list[dict]:
+    """Hybrid retrieval: lexical BM25 + dense/TF-IDF, RRF fusion, MMR diversity,
+    optional bounded cross-encoder rerank. Strict scope: only the filtered
+    chunks are ever scored; scope never widens implicitly."""
     top_k = max(1, top_k or settings.top_k_retrieval)
     chunks = repo.get_chunks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     if skill_id is not None and course_id is not None and lesson_id is not None:
@@ -155,6 +181,7 @@ def search(db: Session, query: str, *, top_k: int = 5, course_id=None, lesson_id
         lexical = lexical_scores(query, chunks)
         ranks = {'lexical': [int(i) for i in np.argsort(-lexical, kind='stable') if lexical[i] > 0]}
         dense_vectors = None
+        dense_backend = "lexical"
         try:
             corpus = repo.get_chunks(db)
             emb, vectors = _index(corpus)
@@ -163,6 +190,7 @@ def search(db: Session, query: str, *, top_k: int = 5, course_id=None, lesson_id
             scores = vectors @ _matrix(emb.embed_query(query))[0]
             if emb.dense:
                 dense_vectors = vectors
+            dense_backend = emb.backend
             floor = settings.dense_min_score if emb.dense else .000001
             selected = [int(i) for i in np.argsort(-scores, kind='stable') if scores[i] >= floor]
             if not selected and scores.max() >= floor * settings.retrieval_backoff_ratio:
@@ -175,17 +203,26 @@ def search(db: Session, query: str, *, top_k: int = 5, course_id=None, lesson_id
             for rank, index in enumerate(ranking, 1):
                 fused[index] = fused.get(index, 0) + 1 / (60 + rank)
                 sources.setdefault(index, []).append(source)
-        candidates = sorted(fused, key=lambda i: (-fused[i], i))[:top_k * 3]
+        multiplier = max(1, settings.reranker_candidate_multiplier)
+        candidates = sorted(fused, key=lambda i: (-fused[i], i))[:top_k * multiplier]
+        mmr_applied = False
         if dense_vectors is not None and candidates:
             relevance = np.array([fused[i] for i in candidates])
             relevance /= relevance.max()
             diverse = mmr_select(dense_vectors[candidates], relevance, len(candidates), settings.mmr_lambda)
             candidates = [candidates[i] for i in diverse]
-        selected = rerank(query, chunks, candidates)[:top_k]
+            mmr_applied = True
+        ranked, reranked = _rerank_bounded(query, chunks, candidates)
+        selected = ranked[:top_k]
+        stages = ["lexical"] + ([dense_backend] if any(k in ranks for k in ("dense", "tfidf")) else []) + ["rrf"]
+        if mmr_applied:
+            stages.append("mmr")
+        stages.append("rerank" if reranked else "no-rerank")
     return [{"document_id": chunks[i].document_id, "course_id": chunks[i].course_id,
              "lesson_id": chunks[i].lesson_id, "skill_id": chunks[i].skill_id,
              "page": chunks[i].page, "chunk_id": chunks[i].id,
              "section": chunks[i].section, "section_id": chunks[i].section_id,
              "type": chunks[i].type, "chunk_index": chunks[i].chunk_index, "text": chunks[i].text,
              "score": float(fused[i]), "retrieval_source": 'hybrid' if len(sources[i]) > 1 else sources[i][0],
-             "retrieval_sources": sources[i]} for i in selected]
+             "retrieval_sources": sources[i], "retrieval_stages": stages,
+             "rerank_applied": reranked} for i in selected]

@@ -32,15 +32,17 @@ class SahlhaAgent:
         self.state = state or AgentState()
 
     # ---------- SKILL EXTRACTION + EXPLANATION ----------
-    def extract_skills(self, *, course_id: str, lesson_id: str, max_skills: int = 6,
+    def extract_skills(self, *, course_id: str, lesson_id: str, max_skills: int | None = None,
                        force: bool = False, n_skills: int | None = None) -> dict:
-        """Split a lesson into skills (one per topic; the AGENT decides how many).
+        """Split a lesson into skills with TWO-STAGE hierarchical discovery.
 
-        Idempotent unless force=True. `max_skills` is only an upper-bound safety cap.
-        `n_skills` is a deprecated alias kept for backwards compatibility.
+        STAGE A: bounded section/chunk proposals (existing per-chunk extraction).
+        STAGE B: whole-lesson consolidation (LLM merges duplicates, orders
+        prerequisites, drops apparatus). `max_skills` is only a safety cap;
+        when None a dynamic cap is derived from lesson complexity. An explicit
+        value is always respected.
         """
-        if n_skills is not None:
-            max_skills = n_skills
+        explicit_max = n_skills if n_skills is not None else max_skills
         st = self.state
         st.course_id, st.lesson_id = course_id, lesson_id
         st.current_phase = Phase.SKILL_EXTRACTION
@@ -60,14 +62,16 @@ class SahlhaAgent:
             content_tools.retire_superseded_skills(self.db, course_id, lesson_id, set())
             raise ValueError("No instructional lesson content is available for skill discovery. Titles, indexes and publication details cannot support skills.")
         st.log("tool:full_lesson_map", {"num_chunks": len(chunks), "sections": len(content_map['sections'])})
+        # STAGE A — section/chunk proposals (bounded, per-chunk).
         raw, backends = [], []
         # Every ordered chunk is mapped. Each request is bounded; there is no
         # global prefix truncation or relevance top-k during topic discovery.
+        proposal_cap = max(1, min(explicit_max if explicit_max is not None else 6, 6))
         for chunk in chunks:
             system, user = build_skill_extraction_prompt(course_id=course_id, lesson_id=lesson_id,
-                context_chunks=[chunk], max_skills=max_skills)
+                context_chunks=[chunk], max_skills=proposal_cap)
             try:
-                data, backend = complete_json(system, user)
+                data, backend = complete_json(system, user, task="skill_extraction")
                 validated = SkillList(skills=data["skills"] if isinstance(data, dict) else data).skills
                 mapped = [item.model_dump() for item in validated]
             except Exception as exc:
@@ -75,23 +79,34 @@ class SahlhaAgent:
                 backend = f"fallback({type(exc).__name__})"
             # Validate each section before combining. A malformed model response
             # must not suppress useful fallback topics in the rest of the lesson.
-            mapped, _ = content_tools.validate_skills(mapped, [chunk], max(1, max_skills))
+            mapped, _ = content_tools.validate_skills(mapped, [chunk], max(1, proposal_cap))
             if not mapped:
                 mapped = content_tools.fallback_topics([chunk])
             raw.extend(mapped)
             backends.append(backend)
-        raw, warnings = content_tools.validate_skills(raw, chunks, max(1, max_skills))
-        if not raw:
-            raw, extra = content_tools.validate_skills(content_tools.fallback_topics(chunks), chunks, max(1, max_skills))
+        # Dynamic capacity from lesson complexity (soft cap, hard safety bound).
+        effective_cap = content_tools.dynamic_skill_cap(
+            content_map, chunks, len(raw), explicit_max)
+        st.log("skills:capacity", {"explicit_max": explicit_max,
+                                   "effective_cap": effective_cap,
+                                   "candidates": len(raw)})
+        # STAGE B — whole-lesson consolidation (merge/split/order globally).
+        final, warnings, consolidation_backend = content_tools.consolidate_skills(
+            content_map, raw, chunks, effective_cap)
+        if consolidation_backend and consolidation_backend not in backends:
+            backends.append(consolidation_backend)
+        if not final:
+            final, extra = content_tools.validate_skills(content_tools.fallback_topics(chunks), chunks, max(1, effective_cap))
             warnings.extend(extra)
-        if not raw:
+        if not final:
             raise ValueError("No evidence-supported teachable topics could be extracted. Review extraction quality.")
-        content_tools.save_mapped_topics(self.db, course_id, lesson_id, content_map, raw, warnings)
+        content_tools.save_mapped_topics(self.db, course_id, lesson_id, content_map, final, warnings)
         backend = ','.join(dict.fromkeys(backends))
-        st.log("llm:extract_skills", {"backend": backend, "count": len(raw), "warnings": warnings})
+        st.log("llm:extract_skills", {"backend": backend, "count": len(final), "warnings": warnings,
+                                      "phase": "consolidation", "cap": effective_cap})
 
         skills = []
-        for s in raw[: max(1, max_skills)]:
+        for s in final[: max(1, effective_cap)]:
             row = skill_tools.register_skill(self.db, course_id=course_id, lesson_id=lesson_id, skill=s)
             skills.append(self._skill_to_dict(row))
         content_tools.retire_superseded_skills(self.db, course_id, lesson_id, {s["skill_id"] for s in skills})
@@ -176,10 +191,12 @@ class SahlhaAgent:
         if reasons:
             teacher_feedback += "\nPrevious teacher feedback to avoid:\n" + "\n".join("- " + reason for reason in reasons)
         st.log("teacher:flag_context", {"count": len(reasons)})
+        key_concepts = list(skill_row.key_concepts or []) if skill_row else []
         system, user = build_question_prompt(course_id=course_id, lesson_id=lesson_id,
                                              skill_id=skill_id, context_chunks=chunks,
-                                             feedback=teacher_feedback, n=n_questions)
-        user += f"\nLearning objective: {objective}\nKnown misconceptions: {misconceptions}"
+                                             feedback=teacher_feedback, n=n_questions,
+                                             objective=objective, key_concepts=key_concepts,
+                                             misconceptions=list(misconceptions or []))
         questions, backend = generate_questions_llm(system, user, chunks, skill_id, n_questions, teacher_feedback)
         st.log("llm:generate_questions", {"backend": backend, "num_questions": len(questions)})
         from sahlha.app.agent.tools.critique_tools import critique_and_top_up
@@ -206,7 +223,7 @@ class SahlhaAgent:
         st.log("phase", Phase.ASSESSMENT)
         student_tools.ensure_student(self.db, student_id)
 
-        approved = question_tools.get_approved_questions(self.db, course_id=course_id,
+        approved = question_tools.get_latest_approved_questions(self.db, course_id=course_id,
                                                          lesson_id=lesson_id, skill_id=skill_id)
         st.log("tool:get_approved_questions", {"count": len(approved)})
         history = student_tools.get_student_history(self.db, student_id)

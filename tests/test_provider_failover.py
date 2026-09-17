@@ -51,7 +51,7 @@ def test_text_provider_chain(monkeypatch, primary, error, backup, expected, call
     monkeypatch.setattr(settings, 'openrouter_model', 'configured-backup')
     monkeypatch.setattr(settings, 'groq_model', 'configured-primary')
     calls = []
-    def complete(provider, key, model, system, user):
+    def complete(provider, key, model, system, user, temperature=0.4, **kwargs):
         calls.append(provider)
         assert model == ('configured-primary' if provider == 'groq' else 'configured-backup')
         if provider == 'groq' and error:

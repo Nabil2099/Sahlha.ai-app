@@ -250,6 +250,49 @@ def get_approved_questions(db: Session, *, course_id: str | None = None,
     return list(db.execute(q).scalars().all())
 
 
+def latest_approved_banks(db: Session, *, course_id: str | None = None,
+                          lesson_id: str | None = None,
+                          skill_id: str | None = None) -> list[m.QuestionBank]:
+    """Latest ACTIVE approved bank version per (course_id, lesson_id, skill_id).
+
+    History is preserved in the database; older approved versions become
+    historical/superseded for future selection purely by this query-time policy.
+    Historical assessments keep referencing their original question IDs via
+    get_question()/get_assessment() and are unaffected.
+    """
+    banks = scoped_banks(db, course_id=course_id, lesson_id=lesson_id,
+                         skill_id=skill_id, status="approved")
+    latest: dict[tuple[str, str, str], m.QuestionBank] = {}
+    for b in banks:
+        key = (b.course_id, b.lesson_id, b.skill_id)
+        current = latest.get(key)
+        if current is None or (b.version, str(b.created_at), str(b.id)) > (
+                current.version, str(current.created_at), str(current.id)):
+            latest[key] = b
+    return sorted(latest.values(), key=lambda b: (b.course_id, b.lesson_id, b.skill_id))
+
+
+def get_latest_approved_questions(db: Session, *, course_id: str | None = None,
+                                  lesson_id: str | None = None,
+                                  skill_id: str | None = None) -> list[m.Question]:
+    """Questions from the latest approved bank version per skill scope only.
+
+    Flagged and retired questions are still excluded. Older approved versions
+    remain in history but never leak into new student-facing selection.
+    """
+    banks = latest_approved_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+    if not banks:
+        return []
+    allowed = {b.id for b in banks}
+    flagged = set(db.scalars(select(m.QuestionFeedback.question_id).where(
+        m.QuestionFeedback.kind == "flag")))
+    q = select(m.Question).options(joinedload(m.Question.bank)).where(
+        m.Question.question_bank_id.in_(allowed),
+        m.Question.retired.is_(False))
+    rows = list(db.execute(q).scalars().all())
+    return [r for r in rows if r.id not in flagged]
+
+
 # ---- Students / attempts ----
 def get_or_create_student(db: Session, student_id: str | None, name: str = "Student") -> m.Student:
     if student_id:
@@ -436,8 +479,8 @@ def scoped_skills(db, *, course_id=None, lesson_id=None, skill_id=None):
 
 
 def study_rows(db, *, course_id, lesson_id):
-    banks = scoped_banks(db, course_id=course_id, lesson_id=lesson_id, status="approved")
-    questions = get_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
+    banks = latest_approved_banks(db, course_id=course_id, lesson_id=lesson_id)
+    questions = get_latest_approved_questions(db, course_id=course_id, lesson_id=lesson_id)
     return get_lesson_explanation(db, course_id=course_id, lesson_id=lesson_id), list_skills(db, course_id=course_id, lesson_id=lesson_id), banks, questions
 
 

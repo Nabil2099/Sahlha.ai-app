@@ -78,6 +78,18 @@ def test_binary_discovery_order(monkeypatch, tmp_path):
     assert ocr.discover_poppler() == str(tmp_path)
 
 
+def test_poppler_discovery_in_winget_without_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(ocr.shutil, 'which', lambda name: None)
+    monkeypatch.setattr(settings, 'poppler_path', '')
+    monkeypatch.setenv('ProgramFiles', str(tmp_path / 'programs'))
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    binary_dir = (tmp_path / 'Microsoft' / 'WinGet' / 'Packages' /
+                  'oschwartz10612.Poppler_test' / 'poppler-25.07.0' / 'Library' / 'bin')
+    binary_dir.mkdir(parents=True)
+    (binary_dir / 'pdftoppm.exe').write_text('fixture')
+    assert ocr.discover_poppler() == str(binary_dir)
+
+
 @pytest.mark.parametrize('name', ['../../bad.txt', '..\\..\\bad.txt', 'CON.txt', 'a:*?<>|.pdf', 'x' * 1000 + '.txt'])
 def test_safe_filenames(name):
     safe = ingestion.sanitize_filename(name)

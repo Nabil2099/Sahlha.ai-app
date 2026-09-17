@@ -26,6 +26,10 @@ def retrieve_lesson(db: Session, course_id: str, lesson_id: str, top_k: int = 5)
             for c in repo.get_chunks(db, course_id=course_id, lesson_id=lesson_id)[:top_k]]
 
 
-def retrieve_skill(db: Session, skill_id: str, top_k: int = 5) -> list[dict]:
+def retrieve_skill(db: Session, skill_id: str, top_k: int = 5,
+                   course_id: str | None = None, lesson_id: str | None = None) -> list[dict]:
+    """Skill-scoped retrieval. When course/lesson are supplied the scope is
+    strict (no cross-lesson leakage). The unscoped variant is legacy and
+    should be avoided for student-facing selection."""
     return retrieve(db, f"skill {skill_id} definition examples usage",
-                    top_k=top_k, skill_id=skill_id)
+                    top_k=top_k, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)

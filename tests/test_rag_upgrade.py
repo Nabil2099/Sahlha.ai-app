@@ -55,7 +55,7 @@ def test_dense_contract_and_normalization(monkeypatch):
     assert values.shape == (1, 384)
     assert np.isclose(np.linalg.norm(values[0]), 1)
     assert calls['normalize_embeddings'] is True
-    assert calls['name'] == 'sentence-transformers/all-MiniLM-L6-v2'
+    assert calls['name'] == settings.embedding_model
 
 
 def test_failed_dense_load_uses_tfidf(monkeypatch):

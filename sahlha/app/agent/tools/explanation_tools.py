@@ -60,7 +60,7 @@ def explain_skill(db, *, course_id, lesson_id, skill_id, force=False):
                                                        skill=skill, context_chunks=chunks)
         data = {}
         try:
-            data, backend = complete_json(system, user)
+            data, backend = complete_json(system, user, task="explanation")
             text = SkillExplanation(explanation=data.get("explanation")).explanation
         except Exception as exc:
             text, backend = fallback_explanation(skill, chunks), f"fallback({type(exc).__name__})"
@@ -93,7 +93,7 @@ def explain_lesson(db, *, course_id, lesson_id, force=False):
         try:
             if sum(len(c["text"]) + 100 for c in chunks) > 12000:
                 raise ValueError("Use complete extractive overview for long lesson")
-            data, backend = complete_json(system, user)
+            data, backend = complete_json(system, user, task="explanation")
             payload = LessonExplanationModel(**data).model_dump()
         except Exception as exc:
             payload = fallback_lesson_explanation(chunks, course_id, lesson_id, names)

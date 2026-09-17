@@ -21,8 +21,11 @@ def select_questions(db: Session, *, student_id: str, course_id=None, lesson_id=
     from collections import Counter
     from sahlha.app.agent.tools import question_tools
     n = n_per_bank or settings.assessment_num_questions
-    pool = question_tools.get_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
-    banks = repo.scoped_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id, status="approved")
+    # Student-facing selection uses ONLY the latest active approved bank
+    # version per (course_id, lesson_id, skill_id). Older approved versions
+    # stay in history but never leak into new assessments.
+    pool = question_tools.get_latest_approved_questions(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
+    banks = repo.latest_approved_banks(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     skills = repo.scoped_skills(db, course_id=course_id, lesson_id=lesson_id, skill_id=skill_id)
     key = lambda row: (row.course_id, row.lesson_id, row.skill_id)
     if learned_only:
