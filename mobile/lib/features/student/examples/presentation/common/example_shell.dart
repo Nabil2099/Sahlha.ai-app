@@ -19,33 +19,39 @@ class ExampleShell extends StatelessWidget {
   final Widget child;
   final VoidCallback? onReset;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.white,
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    clipBehavior: Clip.antiAlias,
+    shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: SahlhaColors.borderSubtle),
+      side: const BorderSide(color: SahlhaColors.borderSubtle),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const SahlhaAvatar(size: 48, state: SahlhaAvatarState.encouraging),
-            const SizedBox(width: 10),
-            Expanded(child: Text(guide)),
-          ],
-        ),
-        const SizedBox(height: 16),
-        child,
-        if (onReset != null)
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: TextButton(onPressed: onReset, child: const Text('Reset')),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const SahlhaAvatar(
+                size: 48,
+                state: SahlhaAvatarState.encouraging,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(guide)),
+            ],
           ),
-      ],
+          const SizedBox(height: 16),
+          child,
+          if (onReset != null)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton(onPressed: onReset, child: const Text('Reset')),
+            ),
+        ],
+      ),
     ),
   );
 }

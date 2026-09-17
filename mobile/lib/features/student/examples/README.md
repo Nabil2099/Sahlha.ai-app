@@ -35,6 +35,7 @@ Debug builds can enable a collapsed selection diagnostic with `--dart-define=EXA
 | ExampleKind | Interaction |
 | --- | --- |
 | multiplicationAreaModel | Source-seeded rows/columns, bounded animated grid, equation, presets/reset, revealable repeated addition |
+| multiplicationGroups | Larger whole-number source products (factors 0–1000), editable equal groups, running totals, reveal all and reset |
 | additionNumberLine | Forward single-step jumps, editable start/jump count, synchronized position/result |
 | subtractionNumberLine | Backward jumps including landing below zero |
 | fractionBars | Equal parts, bounded numerator/denominator, simplified equivalent amount |
@@ -53,6 +54,8 @@ Debug builds can enable a collapsed selection diagnostic with `--dart-define=EXA
 Native defaults are illustrative elementary demonstrations, not fabricated lesson facts. Addition/subtraction inputs are 0-12 (results may be negative); multiplication controls are 1-10; fractions are proper fractions with up to 12 parts. Unsupported supplied values resolve to the explorer rather than silently changing the arithmetic. Algebra currently requires an integer solution of a single positive-coefficient `ax + b = c` form. Assignment traces recognize only the bounded assignment/addition/optional-print template. Loop code recognizes the existing bounded incrementing while-loop template. Arbitrary code is never evaluated.
 
 ## Interaction, accessibility and audio
+
+Skill-title matches outrank related concepts in descriptions. Repeated addition resolves to multiplication unless the title also explicitly requests a separate addition activity. Multiplication outside the 1–10 unit-grid range uses the equal-groups activity when its source factors are whole numbers within 0–1000. Lesson steps and visual source text participate in both validation and initialization. Generic exploration presents supplied examples first, with progress and previous/next navigation.
 
 The shared shell uses the current Sahlha avatar, rounded white cards and teal actions within the existing cream lesson canvas. Number-line position, fraction shading, grid cells, code selection and equation reveals use calm 200-280ms transitions. Step controls, source chips and buttons support tap/keyboard interaction without dragging. State/result semantics announce meaningful values, and visual-only grid/paint details are excluded from duplicate announcements.
 

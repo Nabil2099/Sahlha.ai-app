@@ -31,6 +31,7 @@ PUBLICATION = re.compile(r'©|\ball rights reserved\b|\bisbn\b|creative commons|
 DIRECTORY_ROW = re.compile(r'^.{2,100}?(?:\.{2,}|\s{3,})\s*\d+(?:\s*[-–,]\s*\d+)*\s*$')
 PAGE_HEADER = re.compile(r'^(?:\{?\d+\}?\s*)?a guide for teachers(?:\s*\{?\d+\}?)?$|'
     r'^the improving mathematics education in schools.*(?:project|\{\d+\})$', re.I)
+PAGE_FOOTER = re.compile(r'^(?:pg\.?|page)\s*\d+\s+(?:https?://|www\.)', re.I)
 
 
 def heading_role(heading):
@@ -118,7 +119,7 @@ def instructional_views(chunks):
                 paragraph = ' '.join(s for s in sentences if not PUBLICATION.search(s))
             for line in paragraph.splitlines():
                 clean = line.strip()
-                if not clean or PAGE_HEADER.match(clean) or DIRECTORY_ROW.match(line) or re.fullmatch(r'(?:https?://\S+|\{?\d+\}?)', clean):
+                if not clean or PAGE_HEADER.match(clean) or PAGE_FOOTER.match(clean) or DIRECTORY_ROW.match(line) or re.fullmatch(r'(?:https?://\S+|\{?\d+\}?)', clean):
                     continue
                 kept.append(line)
         text = '\n'.join(kept).strip()

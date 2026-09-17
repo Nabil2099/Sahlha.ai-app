@@ -1,5 +1,6 @@
 enum ExampleKind {
   multiplicationAreaModel,
+  multiplicationGroups,
   additionNumberLine,
   subtractionNumberLine,
   fractionBars,

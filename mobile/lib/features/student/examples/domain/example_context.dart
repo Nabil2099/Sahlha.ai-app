@@ -80,7 +80,11 @@ class ExampleContext {
       explanation: exampleText(content['core_idea']).isNotEmpty
           ? exampleText(content['core_idea'])
           : skill.explanation,
-      examples: [help.body, exampleText(content['example'])],
+      examples: [
+        help.body,
+        exampleText(content['example']),
+        ...exampleStrings(metadata['examples']),
+      ],
       steps: help.steps.isNotEmpty
           ? help.steps
           : exampleStrings(content['steps']),
@@ -123,6 +127,7 @@ class ExampleContext {
 
   String get mathSource => [
     exampleText(visualSpec['source_text']),
+    ...steps,
     ...examples,
     explanation,
     description,

@@ -127,7 +127,15 @@ def generate_material_banks(db: Session, mat: m.LearningMaterial, *, teacher: m.
             b.material_id = mat.id
     db.commit()
     mat.quality_signals = quality_tools.lesson_quality(db, course_id, lesson_id)
-    prepo.set_material_status(db, mat, "banks_ready")
+    generated = sum(b['num_questions'] for b in out['banks'])
+    detail = f"Created {generated} questions for review."
+    if any(b.get('shortfall', 0) for b in out['banks']):
+        detail += " Some skills have fewer questions because their source content is short."
+    skipped = out.get('skipped_skills', [])
+    if skipped:
+        names = ', '.join(s['name'] or s['skill_id'] for s in skipped)
+        detail += f" No questions for: {names}. Re-extract skills or add more lesson content."
+    prepo.set_material_status(db, mat, "banks_ready", detail)
     return out
 
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Material;
+import 'package:flutter/material.dart' as flutter show Material;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,6 +11,7 @@ import '../../classrooms/data/classroom_repository.dart';
 import '../../teacher/data/teacher_repository.dart';
 import '../../teacher/domain/bank_models.dart';
 import '../../teacher/presentation/widgets/teacher_widgets.dart';
+import '../../teacher/presentation/widgets/teacher_skill_card.dart';
 import '../data/material_repository.dart';
 import '../domain/material.dart';
 import 'upload_controller.dart';
@@ -63,17 +65,14 @@ class _MaterialDetailScreenState extends ConsumerState<MaterialDetailScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final material = ref.watch(_materialProvider(widget.materialId));
-    final roomId =
-        material.value?.classroomId ?? widget.classroomId;
+    final roomId = material.value?.classroomId ?? widget.classroomId;
 
     ref.listen(uploadControllerProvider, (prev, next) {
       if (prev?.step != next.step ||
           prev?.material?.status != next.material?.status) {
         ref.invalidate(_materialProvider(widget.materialId));
         ref.invalidate(materialSkillsProvider(widget.materialId));
-        ref.invalidate(
-          teacherBanksProvider(materialId: widget.materialId),
-        );
+        ref.invalidate(teacherBanksProvider(materialId: widget.materialId));
       }
       if (next.error != null && next.error != prev?.error) {
         ScaffoldMessenger.of(context)
@@ -88,11 +87,15 @@ class _MaterialDetailScreenState extends ConsumerState<MaterialDetailScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
+          toolbarHeight: 76,
           leading: BackButton(onPressed: () => _backToClassroom(roomId)),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Curriculum Studio', style: text.titleLarge),
+              Text(
+                'Curriculum Studio',
+                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
               Text(
                 material.value?.title.isNotEmpty == true
                     ? material.value!.title
@@ -111,9 +114,7 @@ class _MaterialDetailScreenState extends ConsumerState<MaterialDetailScreen> {
                   : () {
                       final m = material.value!;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${m.title} — link copied'),
-                        ),
+                        SnackBar(content: Text('${m.title} — link copied')),
                       );
                     },
             ),
@@ -123,13 +124,10 @@ class _MaterialDetailScreenState extends ConsumerState<MaterialDetailScreen> {
           loading: () => const LoadingState(message: 'Opening studio…'),
           error: (e, _) => ErrorState(
             message: e.toString(),
-            onRetry: () =>
-                ref.invalidate(_materialProvider(widget.materialId)),
+            onRetry: () => ref.invalidate(_materialProvider(widget.materialId)),
           ),
           data: (mat) {
-            final skillsAsync = ref.watch(
-              materialSkillsProvider(mat.id),
-            );
+            final skillsAsync = ref.watch(materialSkillsProvider(mat.id));
             final banksAsync = ref.watch(
               teacherBanksProvider(materialId: mat.id),
             );
@@ -157,73 +155,85 @@ class _MaterialDetailScreenState extends ConsumerState<MaterialDetailScreen> {
                     onSelected: (i) => setState(() => _tab = i),
                   ),
                 ),
+                if (mat.status == 'banks_ready' && mat.statusDetail.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SahlhaSpacing.page,
+                      vertical: 8,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 880),
+                      child: _GenerationNotice(message: mat.statusDetail),
+                    ),
+                  ),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () async {
                       ref.invalidate(_materialProvider(mat.id));
                       ref.invalidate(materialSkillsProvider(mat.id));
-                      ref.invalidate(
-                        teacherBanksProvider(materialId: mat.id),
-                      );
+                      ref.invalidate(teacherBanksProvider(materialId: mat.id));
                       await ref.read(_materialProvider(mat.id).future);
                     },
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.all(SahlhaSpacing.page),
-                      child: isProcessing
-                          ? _ProcessingBody(material: mat)
-                          : switch (_tab) {
-                              0 => _OverviewBody(
-                                  material: mat,
-                                  skills: skills,
-                                  banks: banks,
-                                  skillsLoading: skillsAsync.isLoading,
-                                  banksLoading: banksAsync.isLoading,
-                                  onGoSkills: () =>
-                                      setState(() => _tab = 1),
-                                  onGoQuestions: () =>
-                                      setState(() => _tab = 2),
-                                ),
-                              1 => _SkillsBody(
-                                  material: mat,
-                                  skills: skills,
-                                  banks: banks,
-                                  loading: skillsAsync.isLoading,
-                                  error: skillsAsync.error,
-                                  onRetry: () => ref.invalidate(
-                                    materialSkillsProvider(mat.id),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 880),
+                          child: isProcessing
+                              ? _ProcessingBody(material: mat)
+                              : switch (_tab) {
+                                  0 => _OverviewBody(
+                                    material: mat,
+                                    skills: skills,
+                                    banks: banks,
+                                    skillsLoading: skillsAsync.isLoading,
+                                    banksLoading: banksAsync.isLoading,
+                                    onGoSkills: () => setState(() => _tab = 1),
+                                    onGoQuestions: () =>
+                                        setState(() => _tab = 2),
                                   ),
-                                  selectedId: _selectedSkillId,
-                                  onSelect: (id) => setState(() =>
-                                      _selectedSkillId = _selectedSkillId == id
-                                          ? null
-                                          : id),
-                                ),
-                              2 => _QuestionsBody(
-                                  material: mat,
-                                  skills: skills,
-                                  banks: banks,
-                                  loading: banksAsync.isLoading,
-                                  error: banksAsync.error,
-                                  onRetry: () => ref.invalidate(
-                                    teacherBanksProvider(
-                                      materialId: mat.id,
+                                  1 => _SkillsBody(
+                                    material: mat,
+                                    skills: skills,
+                                    banks: banks,
+                                    loading: skillsAsync.isLoading,
+                                    error: skillsAsync.error,
+                                    onRetry: () => ref.invalidate(
+                                      materialSkillsProvider(mat.id),
+                                    ),
+                                    selectedId: _selectedSkillId,
+                                    onSelect: (id) => setState(
+                                      () => _selectedSkillId =
+                                          _selectedSkillId == id ? null : id,
                                     ),
                                   ),
-                                  selectedBankId: _selectedBankId,
-                                  onSelectBank: (id) => setState(() =>
-                                      _selectedBankId =
-                                          _selectedBankId == id ? null : id),
-                                ),
-                              3 => _SourceBody(
-                                  material: mat,
-                                  skills: skills,
-                                ),
-                              _ => _StudioStudentsBody(
-                                  material: mat,
-                                  skills: skills,
-                                ),
-                            },
+                                  2 => _QuestionsBody(
+                                    material: mat,
+                                    skills: skills,
+                                    banks: banks,
+                                    loading: banksAsync.isLoading,
+                                    error: banksAsync.error,
+                                    onRetry: () => ref.invalidate(
+                                      teacherBanksProvider(materialId: mat.id),
+                                    ),
+                                    selectedBankId: _selectedBankId,
+                                    onSelectBank: (id) => setState(
+                                      () => _selectedBankId =
+                                          _selectedBankId == id ? null : id,
+                                    ),
+                                  ),
+                                  3 => _SourceBody(
+                                    material: mat,
+                                    skills: skills,
+                                  ),
+                                  _ => _StudioStudentsBody(
+                                    material: mat,
+                                    skills: skills,
+                                  ),
+                                },
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -242,6 +252,33 @@ final _materialProvider = FutureProvider.autoDispose.family<Material, String>((
 ) {
   return ref.watch(materialRepositoryProvider).get(id);
 });
+
+class _GenerationNotice extends StatelessWidget {
+  const _GenerationNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return flutter.Material(
+      color: SahlhaColors.tealFaint,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: const Icon(Icons.info_outline, color: SahlhaColors.tealDark),
+        title: const Text('Question generation summary'),
+        subtitle: const Text('View results and any skills that need attention'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 160),
+            child: SingleChildScrollView(child: Text(message)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ------------------------------------------------------------- processing
 class _ProcessingBody extends ConsumerWidget {
@@ -368,8 +405,8 @@ class _ProcessingBody extends ConsumerWidget {
           onPressed: upload.extracting || upload.generating
               ? null
               : () => ref
-                  .read(uploadControllerProvider.notifier)
-                  .extractSkills(material.id),
+                    .read(uploadControllerProvider.notifier)
+                    .extractSkills(material.id),
         ),
       ],
     );
@@ -411,20 +448,16 @@ class _OverviewBody extends ConsumerWidget {
     }
     final pending = banks.where((b) => b.status == 'pending_review').length;
     final approved = banks.where((b) => b.status == 'approved').length;
-    final totalQuestions = banks.fold<int>(
-      0,
-      (sum, b) => sum + b.numQuestions,
-    );
+    final totalQuestions = banks.fold<int>(0, (sum, b) => sum + b.numQuestions);
     final pill = material.isFailed
         ? const ReviewPill(label: 'Needs attention', tone: 'attention')
         : pending > 0
-            ? const ReviewPill(label: 'Ready for review', tone: 'ready')
-            : material.status == 'processing' ||
-                    material.status == 'uploaded'
-                ? const ReviewPill(label: 'Processing', tone: 'processing')
-                : approved > 0
-                    ? const ReviewPill(label: 'Approved', tone: 'ready')
-                    : const ReviewPill(label: 'Draft', tone: 'default');
+        ? const ReviewPill(label: 'Ready for review', tone: 'ready')
+        : material.status == 'processing' || material.status == 'uploaded'
+        ? const ReviewPill(label: 'Processing', tone: 'processing')
+        : approved > 0
+        ? const ReviewPill(label: 'Approved', tone: 'ready')
+        : const ReviewPill(label: 'Draft', tone: 'default');
 
     final ext = material.filename.contains('.')
         ? material.filename.split('.').last.toUpperCase()
@@ -439,9 +472,7 @@ class _OverviewBody extends ConsumerWidget {
             Expanded(
               child: Text(
                 material.title.isEmpty ? material.filename : material.title,
-                style: text.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+                style: text.titleLarge?.copyWith(fontWeight: FontWeight.w900),
               ),
             ),
             pill,
@@ -450,21 +481,22 @@ class _OverviewBody extends ConsumerWidget {
         const SizedBox(height: SahlhaSpacing.sm),
         _MetaRow(
           icon: Icons.menu_book_outlined,
-          text: [
-            if ((subject ?? '').isNotEmpty) subject!,
-            if ((grade ?? '').isNotEmpty) 'Grade $grade',
-          ].join(' · ').isEmpty
+          text:
+              [
+                if ((subject ?? '').isNotEmpty) subject!,
+                if ((grade ?? '').isNotEmpty) 'Grade $grade',
+              ].join(' · ').isEmpty
               ? 'Classroom material'
               : [
                   if ((subject ?? '').isNotEmpty) subject!,
                   if ((grade ?? '').isNotEmpty) 'Grade $grade',
                 ].join(' · '),
         ),
-        _MetaRow(icon: Icons.description_outlined, text: '$ext · ${material.filename}'),
         _MetaRow(
-          icon: Icons.schedule_outlined,
-          text: _relativeTime(material),
+          icon: Icons.description_outlined,
+          text: '$ext · ${material.filename}',
         ),
+        _MetaRow(icon: Icons.schedule_outlined, text: _relativeTime(material)),
         const SizedBox(height: SahlhaSpacing.md),
         Row(
           children: [
@@ -507,7 +539,9 @@ class _OverviewBody extends ConsumerWidget {
                     size: 20,
                   ),
                   const SizedBox(width: 8),
-                  Text('Content quality', style: text.titleMedium),
+                  Expanded(
+                    child: Text('Content quality', style: text.titleMedium),
+                  ),
                 ],
               ),
               const SizedBox(height: SahlhaSpacing.md),
@@ -534,9 +568,7 @@ class _OverviewBody extends ConsumerWidget {
                           color: SahlhaColors.muted,
                         ),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(w, style: text.bodySmall),
-                        ),
+                        Expanded(child: Text(w, style: text.bodySmall)),
                       ],
                     ),
                   ),
@@ -585,9 +617,8 @@ class _MetaRow extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: SahlhaColors.muted,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: SahlhaColors.muted),
             ),
           ),
         ],
@@ -648,13 +679,13 @@ _QualityLabels _qualityLabels(Material material) {
   final overall = approvedRatio >= 0.8
       ? 'Good'
       : approvedRatio >= 0.4
-          ? 'Fair'
-          : 'Draft';
+      ? 'Fair'
+      : 'Draft';
   final color = approvedRatio >= 0.8
       ? SahlhaColors.success
       : approvedRatio >= 0.4
-          ? SahlhaColors.warmYellowDeep
-          : SahlhaColors.muted;
+      ? SahlhaColors.warmYellowDeep
+      : SahlhaColors.muted;
   return _QualityLabels(
     overall: overall,
     color: color,
@@ -663,8 +694,8 @@ _QualityLabels _qualityLabels(Material material) {
     grounding: material.approvedBanks > 0
         ? 'Strong'
         : material.numBanks > 0
-            ? 'In review'
-            : '—',
+        ? 'In review'
+        : '—',
     warnings: const [],
   );
 }
@@ -677,9 +708,12 @@ String _summaryText(
   if (skills.isEmpty) {
     return 'Upload complete. Use “Find learning skills” to let Sahlha read this lesson and draft skills for your review.';
   }
-  final names = skills.take(3).map((s) {
-    return s.name.isEmpty ? s.skillId : s.name;
-  }).join(', ');
+  final names = skills
+      .take(3)
+      .map((s) {
+        return s.name.isEmpty ? s.skillId : s.name;
+      })
+      .join(', ');
   final more = skills.length > 3 ? ' and ${skills.length - 3} more' : '';
   return 'This lesson covers ${skills.length} skill${skills.length == 1 ? '' : 's'} ($names$more). '
       '${totalQuestions > 0 ? '$totalQuestions practice questions drafted for your review.' : 'Generate practice questions when the skills look right.'}';
@@ -702,8 +736,8 @@ class _QualityRow extends StatelessWidget {
     final tone = value == 'Good' || value == 'Strong'
         ? 'strong'
         : value == 'Fair' || value == 'In review'
-            ? 'good'
-            : 'pending';
+        ? 'good'
+        : 'pending';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -761,7 +795,19 @@ class _SkillsBody extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Expanded(child: Text('Detected skills', style: text.titleLarge)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Learning skills', style: text.titleLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${skills.length} skills · Review and refine',
+                    style: text.bodySmall?.copyWith(color: SahlhaColors.muted),
+                  ),
+                ],
+              ),
+            ),
             FilledButton.icon(
               onPressed: () => _addSkill(context, ref),
               icon: const Icon(Icons.add, size: 18),
@@ -784,16 +830,29 @@ class _SkillsBody extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: SahlhaSpacing.sm),
-        SahlhaPrimaryButton(
-          label: skills.isNotEmpty
-              ? 'Re-extract skills'
-              : 'Find learning skills',
-          loading: upload.extracting,
-          onPressed: upload.extracting || upload.generating
-              ? null
-              : () => ref
-                  .read(uploadControllerProvider.notifier)
-                  .extractSkills(material.id),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            icon: upload.extracting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, size: 18),
+            label: Text(
+              upload.extracting
+                  ? 'Finding skills…'
+                  : skills.isNotEmpty
+                  ? 'Re-extract skills'
+                  : 'Find learning skills',
+            ),
+            onPressed: upload.extracting || upload.generating
+                ? null
+                : () => ref
+                      .read(uploadControllerProvider.notifier)
+                      .extractSkills(material.id),
+          ),
         ),
         const SizedBox(height: SahlhaSpacing.md),
         if (skills.isEmpty)
@@ -804,7 +863,7 @@ class _SkillsBody extends ConsumerWidget {
           for (final s in skills)
             Padding(
               padding: const EdgeInsets.only(bottom: SahlhaSpacing.sm),
-              child: _SkillRow(
+              child: TeacherSkillCard(
                 skill: s,
                 questionCount: questionsFor(s.skillId) > 0
                     ? questionsFor(s.skillId)
@@ -816,8 +875,8 @@ class _SkillsBody extends ConsumerWidget {
                   _ => 'pending',
                 },
                 evidenceLabel: switch (bankStatusFor(s)) {
-                  'approved' => 'Strong evidence',
-                  'pending' => 'Good evidence',
+                  'approved' => 'Practice approved',
+                  'pending' => 'Awaiting review',
                   'rejected' => 'Needs review',
                   _ => 'No practice yet',
                 },
@@ -835,8 +894,8 @@ class _SkillsBody extends ConsumerWidget {
             onPressed: upload.extracting || upload.generating
                 ? null
                 : () => ref
-                    .read(uploadControllerProvider.notifier)
-                    .generateBanks(material.id),
+                      .read(uploadControllerProvider.notifier)
+                      .generateBanks(material.id),
           ),
         const SizedBox(height: SahlhaSpacing.xl),
       ],
@@ -993,149 +1052,6 @@ class _SkillsBody extends ConsumerWidget {
     }
     name.dispose();
     desc.dispose();
-  }
-}
-
-class _SkillRow extends StatelessWidget {
-  const _SkillRow({
-    required this.skill,
-    required this.questionCount,
-    required this.evidenceTone,
-    required this.evidenceLabel,
-    required this.expanded,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final GeneratedSkill skill;
-  final int questionCount;
-  final String evidenceTone;
-  final String evidenceLabel;
-  final bool expanded;
-  final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return SahlhaCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(SahlhaSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: SahlhaColors.warmYellowSoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.lightbulb_outline,
-                  color: SahlhaColors.warmYellowDeep,
-                ),
-              ),
-              const SizedBox(width: SahlhaSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      skill.name.isEmpty ? skill.skillId : skill.name,
-                      style: text.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (skill.description.isNotEmpty)
-                      Text(
-                        skill.description,
-                        style: text.bodySmall?.copyWith(
-                          color: SahlhaColors.muted,
-                        ),
-                        maxLines: expanded ? 6 : 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          '$questionCount question${questionCount == 1 ? '' : 's'}',
-                          style: text.bodySmall?.copyWith(
-                            color: SahlhaColors.muted,
-                          ),
-                        ),
-                        const Text(' · '),
-                        EvidenceBadge(
-                          label: evidenceLabel,
-                          tone: evidenceTone,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: SahlhaColors.muted),
-            ],
-          ),
-          if (expanded) ...[
-            const Divider(height: 24),
-            if (skill.explanation.isNotEmpty) ...[
-              Text('Explanation', style: text.labelSmall),
-              const SizedBox(height: 4),
-              Text(skill.explanation, style: text.bodyMedium),
-              const SizedBox(height: 8),
-            ],
-            if (skill.keyConcepts.isNotEmpty) ...[
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final k in skill.keyConcepts.take(6))
-                    Chip(
-                      label: Text(k, style: text.labelSmall),
-                      backgroundColor: SahlhaColors.tealFaint,
-                      side: BorderSide.none,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onDelete,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 18,
-                      color: SahlhaColors.danger,
-                    ),
-                    label: const Text('Remove'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: SahlhaColors.danger,
-                      side: const BorderSide(color: SahlhaColors.danger),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 
@@ -1356,9 +1272,7 @@ class _BankQuestionPreview extends ConsumerWidget {
               Expanded(
                 child: Text(
                   'v${bank.version} · ${bank.numQuestions} questions',
-                  style: text.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
               _BankStatusChip(status: bank.status),
@@ -1409,9 +1323,11 @@ class _BankQuestionPreview extends ConsumerWidget {
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.all(SahlhaSpacing.md),
                         decoration: BoxDecoration(
-                          color: i == (q.correctAnswer is int
-                                  ? q.correctAnswer as int
-                                  : -1)
+                          color:
+                              i ==
+                                  (q.correctAnswer is int
+                                      ? q.correctAnswer as int
+                                      : -1)
                               ? SahlhaColors.successSoft
                               : SahlhaColors.cream,
                           borderRadius: BorderRadius.circular(12),
@@ -1440,19 +1356,17 @@ class _BankQuestionPreview extends ConsumerWidget {
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
-                                          const SnackBar(
-                                            content:
-                                                Text('Bank approved.'),
-                                          ),
-                                        );
+                                              const SnackBar(
+                                                content: Text('Bank approved.'),
+                                              ),
+                                            );
                                       }
                                     } on ApiException catch (e) {
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(e.message),
-                                          ),
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(content: Text(e.message)),
                                         );
                                       }
                                     }
@@ -1592,8 +1506,7 @@ class _SourceBodyState extends State<_SourceBody> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Section ${i + 1}',
@@ -1639,8 +1552,8 @@ class _SourceBodyState extends State<_SourceBody> {
                       current.explanation.isNotEmpty
                           ? current.explanation
                           : current.description.isNotEmpty
-                              ? current.description
-                              : 'No excerpt available for this section yet.',
+                          ? current.description
+                          : 'No excerpt available for this section yet.',
                       style: text.bodySmall?.copyWith(height: 1.6),
                     ),
                     const SizedBox(height: 12),
@@ -1684,9 +1597,7 @@ class _SourceBodyState extends State<_SourceBody> {
                                 color: SahlhaColors.teal,
                               ),
                               const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(k, style: text.bodySmall),
-                              ),
+                              Expanded(child: Text(k, style: text.bodySmall)),
                             ],
                           ),
                         ),
@@ -1723,16 +1634,12 @@ class _SourceBodyState extends State<_SourceBody> {
     );
   }
 
-  String currentName(GeneratedSkill s) =>
-      s.name.isEmpty ? s.skillId : s.name;
+  String currentName(GeneratedSkill s) => s.name.isEmpty ? s.skillId : s.name;
 }
 
 // ------------------------------------------------------------- students
 class _StudioStudentsBody extends ConsumerStatefulWidget {
-  const _StudioStudentsBody({
-    required this.material,
-    required this.skills,
-  });
+  const _StudioStudentsBody({required this.material, required this.skills});
 
   final Material material;
   final List<GeneratedSkill> skills;
@@ -1789,8 +1696,7 @@ class _StudioStudentsBodyState extends ConsumerState<_StudioStudentsBody> {
             if (filtered.isEmpty) {
               return const SahlhaCard(child: Text('No students match.'));
             }
-            final perStudent =
-                masteryAsync.value?['students'] as List? ?? [];
+            final perStudent = masteryAsync.value?['students'] as List? ?? [];
             String subtitleFor(String studentId) {
               for (final p in perStudent) {
                 final m = p as Map<String, dynamic>;
@@ -1826,9 +1732,8 @@ class _StudioStudentsBodyState extends ConsumerState<_StudioStudentsBody> {
                       name: s.name,
                       subtitle: subtitleFor(s.id),
                       avatarColor: teacherAvatarColor(s.id),
-                      onTap: () => context.push(
-                        '/teacher/students/$roomId/${s.id}',
-                      ),
+                      onTap: () =>
+                          context.push('/teacher/students/$roomId/${s.id}'),
                     ),
                   ),
               ],
@@ -1843,8 +1748,7 @@ class _StudioStudentsBodyState extends ConsumerState<_StudioStudentsBody> {
 
 final _studioStudentsProvider = FutureProvider.autoDispose
     .family<List<ClassroomStudentLite>, String>((ref, id) async {
-      final list =
-          await ref.watch(classroomRepositoryProvider).students(id);
+      final list = await ref.watch(classroomRepositoryProvider).students(id);
       return list
           .map((s) => ClassroomStudentLite(id: s.id, name: s.name))
           .toList();

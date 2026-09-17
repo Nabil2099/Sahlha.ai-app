@@ -128,19 +128,29 @@ class SahlhaAgent:
         if not skill_tools.list_skills(self.db, course_id=course_id, lesson_id=lesson_id):
             self.extract_skills(course_id=course_id, lesson_id=lesson_id)
             self.explain_skills(course_id=course_id, lesson_id=lesson_id)
-        banks = []
+        from sahlha.app.agent.tools.critique_tools import InsufficientEvidenceError
+        banks, skipped = [], []
         for row in skill_tools.list_skills(self.db, course_id=course_id, lesson_id=lesson_id):
-            banks.append(self.generate_question_bank(
-                course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id,
-                teacher_feedback=teacher_feedback, n_questions=n_questions))
-        return {"lesson_id": lesson_id, "num_skills": len(banks), "banks": banks, "trace": st.trace}
+            try:
+                banks.append(self.generate_question_bank(
+                    course_id=course_id, lesson_id=lesson_id, skill_id=row.skill_id,
+                    teacher_feedback=teacher_feedback, n_questions=n_questions, allow_partial=True))
+            except InsufficientEvidenceError as exc:
+                skipped.append({"skill_id": row.skill_id, "name": row.name, "reason": str(exc)})
+                st.log("questions:insufficient_evidence", skipped[-1])
+        if not banks:
+            raise InsufficientEvidenceError(
+                "No grounded questions could be created. Re-extract the skills or upload more detailed lesson content.")
+        return {"lesson_id": lesson_id, "num_skills": len(banks), "banks": banks,
+                "skipped_skills": skipped, "trace": st.trace}
 
     _skill_to_dict = staticmethod(skill_tools.serialize_skill)
 
     # ---------- QUESTION GENERATION (per skill) ----------
     def generate_question_bank(self, *, course_id: str, lesson_id: str, skill_id: str,
                                teacher_feedback: str = "", n_questions: int = 8,
-                               student_id: str = "", teacher_id: str = "teacher_1") -> dict:
+                               student_id: str = "", teacher_id: str = "teacher_1",
+                               allow_partial: bool = False) -> dict:
         st = self.state
         st.course_id, st.lesson_id, st.skill_id = course_id, lesson_id, skill_id
         st.student_id, st.teacher_id = student_id, teacher_id
@@ -156,7 +166,8 @@ class SahlhaAgent:
         for chunk in chunks:
             chunk['learning_objective'] = objective
         if not chunks:
-            raise ValueError("No source evidence is available within this skill scope.")
+            from sahlha.app.agent.tools.critique_tools import InsufficientEvidenceError
+            raise InsufficientEvidenceError("No source evidence is available within this skill scope.")
         st.retrieved_context = chunks
         st.log("tool:retrieve_skill_material", {"skill_id": skill_id, "num_chunks": len(chunks),
                                                 "chunk_ids": [c.get("chunk_id") for c in chunks]})
@@ -172,7 +183,8 @@ class SahlhaAgent:
         questions, backend = generate_questions_llm(system, user, chunks, skill_id, n_questions, teacher_feedback)
         st.log("llm:generate_questions", {"backend": backend, "num_questions": len(questions)})
         from sahlha.app.agent.tools.critique_tools import critique_and_top_up
-        questions, critique = critique_and_top_up(questions, chunks, skill_id, n_questions, teacher_feedback)
+        questions, critique = critique_and_top_up(questions, chunks, skill_id, n_questions, teacher_feedback,
+                                                allow_partial=allow_partial)
         st.log("questions:critique", critique)
 
         saved = question_tools.save_questions(self.db, course_id=course_id, lesson_id=lesson_id,
@@ -181,7 +193,8 @@ class SahlhaAgent:
         st.log("tool:save_questions", saved)
         st.current_phase = Phase.WAITING_FOR_TEACHER
         st.log("phase", Phase.WAITING_FOR_TEACHER)
-        return {**saved, "backend": backend, "trace": st.trace,
+        return {**saved, "backend": backend, "trace": st.trace, "skill_id": skill_id,
+                "requested_questions": n_questions, "shortfall": critique['shortfall'],
                 "retrieved_chunks": len(chunks)}
 
     # ---------- ASSESSMENT ----------

@@ -584,19 +584,24 @@ class CurriculumTabBar extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
+                showCheckmark: false,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 12,
+                ),
                 label: Text(tabs[i]),
                 selected: selected == i,
                 onSelected: (_) => onSelected(i),
-                selectedColor: SahlhaColors.teal,
+                selectedColor: SahlhaColors.tealSoft,
                 labelStyle: TextStyle(
-                  color: selected == i ? Colors.white : SahlhaColors.ink,
+                  color: selected == i
+                      ? SahlhaColors.tealDark
+                      : SahlhaColors.muted,
                   fontWeight: FontWeight.w700,
                 ),
                 backgroundColor: SahlhaColors.surfacePrimary,
                 side: BorderSide(
-                  color: selected == i
-                      ? SahlhaColors.teal
-                      : SahlhaColors.line,
+                  color: selected == i ? SahlhaColors.teal : SahlhaColors.line,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

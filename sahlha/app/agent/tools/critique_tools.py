@@ -5,6 +5,10 @@ from sahlha.app.agent.llm import fallback_questions, complete_json
 from sahlha.app.config import settings
 
 
+class InsufficientEvidenceError(ValueError):
+    """The source cannot support the requested practice questions."""
+
+
 def _terms(text):
     stop = {"the", "and", "this", "that", "with", "from", "lesson", "material", "statement", "based", "complete", "which", "what", "question", "answer"}
     return {t for t in re.findall(r"\w+", text.lower()) if len(t) > 2 and t not in stop}
@@ -62,9 +66,9 @@ def critique_question(question, context_chunks, skill_id):
         return False, "invalid question shape"
 
 
-def critique_and_top_up(questions, context_chunks, skill_id, count, feedback=""):
+def critique_and_top_up(questions, context_chunks, skill_id, count, feedback="", *, allow_partial=False):
     if not any(c.get("text", "").strip() for c in context_chunks):
-        raise ValueError("No curriculum context is available. Process the lesson before generating questions.")
+        raise InsufficientEvidenceError("No curriculum context is available. Process the lesson before generating questions.")
     kept, rejected = [], []
     seen = set()
     for question in questions:
@@ -112,7 +116,8 @@ def critique_and_top_up(questions, context_chunks, skill_id, count, feedback="")
             replaced += 1
             kept.append(dict(question, skill_id=skill_id, verification={
                 **question.get('verification', {}), 'passed': True, 'method': 'source_completion'}))
-    if len(kept) < count:
-        raise ValueError("Not enough grounded questions could be created from this material.")
+    if not kept or (len(kept) < count and not allow_partial):
+        raise InsufficientEvidenceError("Not enough grounded questions could be created from this material. Add more lesson content or re-extract the skills.")
     return kept[:count], {"retained": min(count, retained), "rejected": rejected,
-                          "replacements": replaced, "target": count}
+                          "replacements": replaced, "target": count,
+                          "generated": min(count, len(kept)), "shortfall": max(0, count - len(kept))}

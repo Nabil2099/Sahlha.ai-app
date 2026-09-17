@@ -17,7 +17,10 @@ class ExampleRenderer {
     final signals = <String>[];
     var score = 0;
     final expression = RegExp(pattern, caseSensitive: false);
-    if (expression.hasMatch(context.topic)) {
+    if (expression.hasMatch(context.skillName)) {
+      score += 120;
+      signals.add('skill title');
+    } else if (expression.hasMatch(context.topic)) {
       score += 65;
       signals.add('topic: ${expression.firstMatch(context.topic)![0]}');
     }

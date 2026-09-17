@@ -11,6 +11,12 @@ const _code = r'programming|computer|coding|informatics';
 const _science = r'science|biology|chemistry|physics';
 const renderers = <ExampleRenderer>[
   ExampleRenderer(
+    ExampleKind.multiplicationGroups,
+    _math,
+    r'\b(multiplication|multiply|repeated addition|times tables?)\b',
+    aliases: ['multiplication_groups'],
+  ),
+  ExampleRenderer(
     ExampleKind.multiplicationAreaModel,
     _math,
     r'\b(area models?|multiplication|multiply|repeated addition|times tables?)\b',
@@ -129,6 +135,13 @@ class ExampleResolver {
             .toList()
           ..sort((a, b) => b.score.compareTo(a.score));
     // A circle is a specifically requested fraction representation.
+    final primary = context.skillName.toLowerCase();
+    if (RegExp(r'\b(multiplication|multiply|repeated addition)\b')
+            .hasMatch(primary) &&
+        !RegExp(r'\b(addition|adding|add|plus|sum)\b')
+            .hasMatch(primary.replaceAll('repeated addition', ''))) {
+      matches.removeWhere((m) => m.kind == ExampleKind.additionNumberLine);
+    }
     if (matches.any((m) => m.kind == ExampleKind.fractionCircle)) {
       matches.removeWhere((m) => m.kind == ExampleKind.fractionBars);
     }
@@ -168,6 +181,10 @@ class ExampleResolver {
 
 bool canRender(ExampleKind kind, ExampleContext c) {
   switch (kind) {
+    case ExampleKind.multiplicationGroups:
+      return !safeNumericExample(c, r'[xX*\u00d7]', 1, 10) &&
+          safeNumericExample(c, r'[xX*\u00d7]', 0, 1000) &&
+          multiplicationPair(c) != null;
     case ExampleKind.multiplicationAreaModel:
       return safeNumericExample(c, r'[xX*\u00d7]', 1, 10);
     case ExampleKind.additionNumberLine:
@@ -203,6 +220,12 @@ bool canRender(ExampleKind kind, ExampleContext c) {
     default:
       return true;
   }
+}
+
+List<int>? multiplicationPair(ExampleContext context) {
+  final match = RegExp(r'(?<![\w.\-])(\d+)\s*[xX*\u00d7]\s*(\d+)(?![\d.])')
+      .firstMatch(context.mathSource);
+  return match == null ? null : [int.parse(match[1]!), int.parse(match[2]!)];
 }
 
 /// Only the native ax + b = c demonstration is solved locally.

@@ -33,11 +33,11 @@ class _ConceptExplorerExampleState extends State<ConceptExplorerExample> {
       c.description,
       c.explanation,
     ].firstWhere((s) => s.isNotEmpty, orElse: () => c.title);
-    final parts = <dynamic>{
+    final parts = <String>{
+      ...c.examples.expand(chunks),
+      ...c.steps.expand(chunks),
       ...chunks(core),
       if (c.explanation != core) ...chunks(c.explanation),
-      ...c.steps.expand(chunks),
-      ...c.examples.expand(chunks),
     }.toList();
     final index = step.clamp(0, parts.length - 1);
     return ExampleShell(
@@ -56,6 +56,15 @@ class _ConceptExplorerExampleState extends State<ConceptExplorerExample> {
                 : 'HOW IT WORKS \u2022 ${index + 1} / ${parts.length}',
           ),
           ExampleResult(parts[index]),
+          Text('Part ${index + 1} of ${parts.length}'),
+          if (index > 0)
+            TextButton(
+              onPressed: () => setState(() {
+                step--;
+                reveal = false;
+              }),
+              child: const Text('Previous idea'),
+            ),
           if (c.keyConcepts.isNotEmpty)
             ExpansionTile(
               title: const Text('Key connections'),

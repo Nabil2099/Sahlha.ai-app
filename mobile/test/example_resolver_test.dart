@@ -7,6 +7,59 @@ import 'package:sahlha/features/student/examples/presentation/example_renderer_r
 
 void main() {
   const resolver = ExampleResolver();
+  test('multiplication applications retain larger source factors', () {
+    for (final title in [
+      'Multiplication Applications',
+      'Multiplication as Repeated Addition',
+    ]) {
+      final context = ExampleContext(
+        subject: 'Math',
+        skillName: title,
+        keyConcepts: ['Repeated addition', 'Addition'],
+        description: 'Use multiplication to calculate a cost.',
+        examples: ['Six items cost 25 cents each: 6 × 25 = 150 cents.'],
+      );
+      expect(resolver.resolve(context).kind, ExampleKind.multiplicationGroups);
+      expect(multiplicationPair(context), [6, 25]);
+    }
+    expect(
+      resolver
+          .resolve(
+            ExampleContext(skillName: 'Repeated addition', examples: ['3 × 5']),
+          )
+          .kind,
+      ExampleKind.multiplicationAreaModel,
+    );
+  });
+  test(
+    'skill title wins over related concepts and step numbers are validated',
+    () {
+      expect(
+        resolver
+            .resolve(
+              ExampleContext(
+                subject: 'Math',
+                skillName: 'Multiplication',
+                keyConcepts: ['Addition'],
+                description: 'Addition of equal groups',
+              ),
+            )
+            .kind,
+        ExampleKind.multiplicationAreaModel,
+      );
+      expect(
+        resolver
+            .resolve(
+              ExampleContext(
+                skillName: 'Multiplication',
+                steps: ['12 × 8 = 96'],
+              ),
+            )
+            .kind,
+        ExampleKind.multiplicationGroups,
+      );
+    },
+  );
   final topics = {
     'Area Models of Multiplication': ExampleKind.multiplicationAreaModel,
     'Adding numbers on a number line': ExampleKind.additionNumberLine,
@@ -188,7 +241,7 @@ void main() {
         ExampleContext(skillName: 'Addition', examples: ['1.5 + 2']),
         ExampleContext(skillName: 'Fractions', examples: ['7/3']),
         ExampleContext(skillName: 'Fractions', examples: ['1/0']),
-        ExampleContext(skillName: 'Multiplication', examples: ['12 x 8']),
+        ExampleContext(skillName: 'Multiplication', examples: ['1200 x 8']),
         ExampleContext(
           skillName: 'Code trace',
           visualSpec: {'source_text': 'deleteEverything()'},

@@ -7,6 +7,7 @@ import '../domain/example_context.dart';
 import '../domain/example_kind.dart';
 import '../domain/example_resolver.dart';
 import 'renderers/concept_explorer_example.dart';
+import 'renderers/multiplication_groups_example.dart';
 import 'renderers/number_line_example.dart';
 import 'renderers/fraction_example.dart';
 import 'renderers/equation_steps_example.dart';
@@ -19,15 +20,18 @@ typedef ExampleBuilder = Widget Function(ExampleContext context);
 
 class ExampleRendererRegistry {
   static final Map<ExampleKind, ExampleBuilder> builders = Map.unmodifiable({
+    ExampleKind.multiplicationGroups: (c) =>
+        MultiplicationGroupsExample(context: c),
     ExampleKind.multiplicationAreaModel: (c) => AreaModelExample(
-      skill:
-          c.skill ??
-          SkillBundle(
-            name: c.skillName,
-            description: c.description,
-            explanation: c.explanation,
-          ),
-      example: c.help ?? SkillHelp(body: c.examples.join(' '), steps: c.steps),
+      skill: SkillBundle(
+        name: c.skillName,
+        description: c.description,
+        explanation: c.explanation,
+      ),
+      example: SkillHelp(
+        body: c.examples.join('\n'),
+        steps: [exampleText(c.visualSpec['source_text']), ...c.steps],
+      ),
     ),
     ExampleKind.additionNumberLine: (c) => NumberLineExample(context: c),
     ExampleKind.subtractionNumberLine: (c) =>
